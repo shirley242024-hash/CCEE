@@ -1,0 +1,13 @@
+{
+  "name": "ccee",
+  "version": "0.1.0",
+  "description": "기후변화와 환경생태",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:supabase": "node --env-file=.env src/testConnection.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2"
+  }
+}
