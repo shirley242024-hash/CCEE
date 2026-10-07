@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:supabase": "node --env-file=.env src/testConnection.js"
+    "test:supabase": "node --use-env-proxy --env-file=.env src/testConnection.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2"
