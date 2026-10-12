@@ -11,6 +11,7 @@ import { detectRisk } from './safety.js';
 import { signState, StateError, verifyState } from './state.js';
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const MAX_NAME_CHARS = 20;
 
 const MSG = {
   badCode: '수업 코드가 맞지 않아요. 선생님께 다시 확인해 주세요.',
@@ -35,6 +36,7 @@ const MSG = {
   otherLesson: '다른 차시의 대화 정보예요. "처음부터 다시"를 눌러 새로 시작해 주세요.',
   tooLongCard: `정리 카드는 ${MAX_CARD_CHARS}자까지 보낼 수 있어요.`,
   tooLongResume: '지난 대화 정리가 너무 길어요. 선생님께 알려 주세요.',
+  needIdentity: '시작하기 전에 학번(숫자 5자리)과 이름을 입력해 주세요.',
   cardsOff: '학번으로 정리 카드를 저장하는 기능이 꺼져 있어요. 카드를 복사해서 보관해 주세요.',
   rateCards: '요청이 너무 많아요. 잠시 뒤에 다시 시도해 주세요.',
   badStudentId: '학번은 숫자 5자리로 입력해 주세요. (예: 20101)',
@@ -154,6 +156,9 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
       cardStorage: !!cardStore,
       maxChars: config.maxStudentChars,
       maxCardChars: MAX_CARD_CHARS,
+      // 대화 기록을 저장할 때만 학번·이름을 묻는다(저장하지 않으면 묻지도 받지도 않는다).
+      askIdentity: !!config.logChats,
+      maxNameChars: MAX_NAME_CHARS,
       lessons: publicLessons().map((l) => ({ ...l, available: l.available && lessons.has(l.id) })),
     });
   });
@@ -168,6 +173,18 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     if (!message) return fail(res, 400, 'empty', MSG.empty);
     if ([...message].length > config.maxStudentChars) {
       return fail(res, 400, 'too_long_message', `메시지는 ${config.maxStudentChars}자까지 보낼 수 있어요.`);
+    }
+
+    // 대화 기록을 저장하면 기록마다 누구의 대화인지 남기도록 학번·이름을 받는다.
+    let studentId = '';
+    let studentName = '';
+    if (config.logChats) {
+      studentId = cleanText(body.studentId);
+      studentName = cleanText(body.studentName);
+      const nameLength = [...studentName].length;
+      if (!STUDENT_ID_RE.test(studentId) || nameLength < 1 || nameLength > MAX_NAME_CHARS) {
+        return fail(res, 400, 'need_identity', MSG.needIdentity);
+      }
     }
 
     // 차시 번호가 없는 요청과 대화 정보는 1차시로 본다(차시를 나누기 전에 시작한 대화도 이어지게).
@@ -242,10 +259,9 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     }
     activeStreams += 1;
 
-    const label = typeof body.label === 'string' ? body.label.trim().slice(0, 30) : '';
     const flagged = detectRisk(message);
     if (flagged) console.warn(`[FLAG] 위기 신호가 의심되는 대화예요. 차시=${lesson.id} 세션=${sid.slice(0, 8)}`);
-    const logBase = { sessionId: sid, lesson: lesson.id, label, flagged, model: config.model, promptVersion: lesson.prompt.version, student: message };
+    const logBase = { sessionId: sid, lesson: lesson.id, studentId, studentName, flagged, model: config.model, promptVersion: lesson.prompt.version, student: message };
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',

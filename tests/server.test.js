@@ -144,11 +144,12 @@ describe('챗봇 서버(모의 Anthropic 사용)', () => {
     assert.equal(normal.flagged, false);
   });
 
-  it('기록에는 단계와 프롬프트 버전이 남는다', async () => {
-    const r = await h.chat({ message: '기록 확인', label: '3번' });
+  it('기록에는 단계와 프롬프트 버전이 남고, 기록을 끄면 학번·이름을 받지 않는다', async () => {
+    const r = await h.chat({ message: '기록 확인', studentId: '20101', studentName: '홍길동' });
     assert.ok(h.doneOf(r));
     const entry = h.logs.at(-1);
-    assert.equal(entry.label, '3번');
+    assert.equal(entry.studentId, '', '대화 기록을 끈 설정에서는 학번을 남기지 않는다');
+    assert.equal(entry.studentName, '');
     assert.equal(entry.stage, 1);
     assert.equal(entry.promptVersion, h.systemPrompt.version);
     assert.ok(entry.tutor.startsWith('[단계 1/6'));

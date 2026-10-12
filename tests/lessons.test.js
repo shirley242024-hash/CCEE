@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createCardStore } from '../server/cards.js';
 import { parseStage } from '../server/chat.js';
 import { loadConfig } from '../server/config.js';
+import { createLogger } from '../server/logger.js';
 import { signState } from '../server/state.js';
 import { memoryCardStore, SECRET, startHarness } from './helpers.js';
 
@@ -121,6 +122,40 @@ describe('차시 나누기', () => {
     assert.deepEqual(parseStage('[단계 2/6 · 근거 확인]\n본문', 6), { stage: 2, name: '근거 확인' });
     assert.equal(parseStage('[단계 2/5 · 근거 확인]', 6), null);
     assert.equal(parseStage('[단계 0/6 · 없음]', 6), null);
+  });
+});
+
+describe('대화 기록과 학번·이름', () => {
+  const LOG_ENV = { LOG_CHATS: 'true', SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SECRET_KEY: 'sb_secret_test' };
+
+  it('기록을 켜면 학번·이름이 있어야 대화할 수 있고, 기록마다 함께 남는다', async () => {
+    const h = await startHarness(LOG_ENV);
+    try {
+      const cfg = await (await fetch(`${h.base}/api/config`)).json();
+      assert.equal(cfg.askIdentity, true);
+      for (const who of [{}, { studentId: '20101' }, { studentId: '2010', studentName: '홍길동' }, { studentId: '20101', studentName: '가'.repeat(21) }, { studentId: '20101', studentName: '   ' }]) {
+        const r = await h.chat({ message: '안녕', ...who });
+        assert.equal(r.status, 400, JSON.stringify(who));
+        assert.equal(r.json.error, 'need_identity');
+      }
+      assert.equal(h.mock.requests.length, 0, '학번·이름이 없으면 Anthropic을 부르지 않는다');
+
+      const ok = await h.chat({ message: '안녕', lesson: 2, studentId: ' 20101 ', studentName: ' 홍길동 ' });
+      assert.equal(ok.status, 200);
+      const entry = h.logs.at(-1);
+      assert.deepEqual([entry.studentId, entry.studentName, entry.lesson], ['20101', '홍길동', 2]);
+    } finally { await h.close(); }
+  });
+
+  it('기록 설정: 비밀 키가 있으면 공개용 키 없이도 켜지고, 기록 줄에 학번·이름 열이 들어간다', async () => {
+    assert.deepEqual(loadConfig({ SESSION_SECRET: SECRET, ...LOG_ENV }).errors, []);
+    const noKey = loadConfig({ SESSION_SECRET: SECRET, LOG_CHATS: 'true', SUPABASE_URL: 'https://x.supabase.co' });
+    assert.ok(noKey.errors.some((e) => e.includes('SUPABASE_SECRET_KEY')));
+
+    const rows = [];
+    const logger = createLogger({ logChats: true }, { client: { from: () => ({ insert: async (r) => { rows.push(...r); return { error: null }; } }) } });
+    await logger.log({ sessionId: 's', lesson: 1, studentId: '20101', studentName: '홍길동', stage: 2, flagged: false, model: 'm', promptVersion: 'v', student: '학생 글', tutor: '챗봇 글' });
+    assert.deepEqual(rows.map((r) => [r.role, r.student_id, r.student_name, r.lesson]), [['student', '20101', '홍길동', 1], ['tutor', '20101', '홍길동', 1]]);
   });
 });
 

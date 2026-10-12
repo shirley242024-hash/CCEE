@@ -353,3 +353,7 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
   .titles { flex: 1 1 100%; }
   .top-actions { justify-content: flex-start; }
 }
+
+/* 대화 기록을 켰을 때 받는 학번·이름 */
+#id-field #name { max-width: 14em; }
+#id-field label[for="name"] { margin-top: 6px; }

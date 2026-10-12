@@ -9,13 +9,14 @@ const RESUME_NOTE = '(지난 대화를 정리해 함께 보냈어요)';
 const RESUME_TEXT = '이어서 할게요.';
 const RESUME_DIVIDER = '여기부터 이어서 새 대화';
 const RESUME_MAX = 12000; // 지난 대화 정리의 최대 글자 수(서버 한도보다 작게)
+const ME_KEY = 'ccee.me'; // 학번·이름(대화 기록을 켰을 때만 묻는다). 차시를 오가도 다시 쓰지 않게 탭에 기억한다.
 const SID_RE = /^\d{5}$/;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
   main: $('#main'), log: $('#log'), steps: $('#steps'), caption: $('#stage-caption'), form: $('#composer'), input: $('#input'),
   send: $('#send'), reset: $('#reset'), toPicker: $('#to-picker'), download: $('#download'), intro: $('#intro'), start: $('#start'), counter: $('#counter'),
-  codeField: $('#code-field'), code: $('#code'), labelField: $('#label-field'), label: $('#label'), logNotice: $('#log-notice'),
+  codeField: $('#code-field'), code: $('#code'), idField: $('#id-field'), sid: $('#sid'), name: $('#name'), logNotice: $('#log-notice'),
   title: $('#title'), subtitle: $('#subtitle'), picker: $('#picker'), lessonList: $('#lesson-list'), rules: $('#rules'),
   cardIn: $('#card-in'), cardInHint: $('#card-in-hint'), cardLoad: $('#card-load'), loadSid: $('#load-sid'), loadCard: $('#load-card'),
   cardText: $('#card-text'), cardStatus: $('#card-status'),
@@ -57,7 +58,7 @@ function save() {
   try {
     sessionStorage.setItem(storeKey(state.lesson.id), JSON.stringify({
       token: state.token, stage: state.stage, transcript: state.transcript, pending: state.pending,
-      code: els.code.value, label: els.label.value, studentId: state.studentId, card: state.card,
+      code: els.code.value, studentId: state.studentId, card: state.card,
     }));
   } catch { /* 저장 불가: 무시 */ }
 }
@@ -389,7 +390,8 @@ function updateDownload() {
 }
 function downloadTranscript() {
   const now = new Date();
-  const lines = [`${state.lesson.id}차시 · ${state.lesson.title}`, `내려받은 때: ${now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, ''];
+  const who = state.cfg.askIdentity && els.sid.value.trim() ? [`학번: ${els.sid.value.trim()} · 이름: ${els.name.value.trim()}`] : [];
+  const lines = [`${state.lesson.id}차시 · ${state.lesson.title}`, ...who, `내려받은 때: ${now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, ''];
   state.transcript.forEach((m) => {
     if (m.role === 'divider') {
       lines.push(`----- ${RESUME_DIVIDER} -----`, '');
@@ -514,7 +516,7 @@ async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: text, lesson: state.lesson.id, card: card || undefined, resume: resume || undefined, state: state.token,
-        accessCode: els.code.value.trim(), label: els.label.value.trim(),
+        accessCode: els.code.value.trim(), ...identity(),
       }),
     });
 
@@ -522,6 +524,13 @@ async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
       let msg = '문제가 생겼어요. 잠시 뒤에 다시 시도해 주세요.';
       let code = '';
       try { const j = await res.json(); msg = j.message || msg; code = j.error || ''; } catch { /* 본문 없음 */ }
+      if (code === 'need_identity') {
+        // 화면을 연 뒤에 선생님이 대화 기록을 켠 경우에도 학번·이름 칸을 보여 준다.
+        state.cfg.askIdentity = true;
+        els.idField.hidden = false;
+        showIntro();
+        focusAfter = els.sid;
+      }
       if (code === 'bad_code') {
         // 코드 칸이 없었던 경우(설정을 못 읽었거나 서버에서 코드를 새로 켠 경우)에도 입력할 수 있게 한다.
         state.cfg.requiresAccessCode = true;
@@ -613,13 +622,29 @@ els.form.addEventListener('submit', (e) => {
   send(text, firstTurnExtras());
 });
 
+/** 대화 기록을 켠 경우에만 학번·이름을 보낸다. */
+function identity() {
+  return state.cfg.askIdentity ? { studentId: els.sid.value.trim(), studentName: els.name.value.trim() } : {};
+}
+function rememberIdentity() {
+  try { sessionStorage.setItem(ME_KEY, JSON.stringify({ studentId: els.sid.value.trim(), studentName: els.name.value.trim() })); } catch { /* 무시 */ }
+}
 function validateFields() {
-  if (state.cfg.requiresAccessCode && !els.code.value.trim()) {
+  const stop = (message, field) => {
     clearNotices();
     showIntro();
-    addNotice('수업 코드를 먼저 입력해 주세요.', { error: true });
-    els.code.focus();
+    addNotice(message, { error: true });
+    field.focus();
     return false;
+  };
+  if (state.cfg.requiresAccessCode && !els.code.value.trim()) return stop('수업 코드를 먼저 입력해 주세요.', els.code);
+  if (state.cfg.askIdentity) {
+    if (!SID_RE.test(els.sid.value.trim())) return stop('학번을 숫자 5자리로 입력해 주세요. (예: 20101)', els.sid);
+    const name = [...els.name.value.trim()].length;
+    if (name < 1 || name > state.cfg.maxNameChars) return stop(`이름을 입력해 주세요. (${state.cfg.maxNameChars}자까지)`, els.name);
+    rememberIdentity();
+    // 학번 카드 칸도 같은 학번으로 채워 둔다.
+    if (!state.studentId) { state.studentId = els.sid.value.trim(); els.loadSid.value = state.studentId; }
   }
   return true;
 }
@@ -698,7 +723,7 @@ function enterLesson(lesson) {
 
   els.rules.replaceChildren(...lesson.intro.map((line) => { const li = document.createElement('li'); inline(li, line); return li; }));
   els.codeField.hidden = !state.cfg.requiresAccessCode;
-  els.labelField.hidden = !state.cfg.logging;
+  els.idField.hidden = !state.cfg.askIdentity;
   els.logNotice.hidden = !state.cfg.logging;
   els.cardIn.hidden = !lesson.usesCard;
   els.cardLoad.hidden = !state.cfg.cardStorage;
@@ -713,14 +738,16 @@ function enterLesson(lesson) {
 
 /** 이 차시에서 저장해 둔 대화를 다시 그린다. */
 function restore() {
+  const me = readKey(ME_KEY);
+  if (me) { els.sid.value = me.studentId || ''; els.name.value = me.studentName || ''; }
   const saved = readKey(storeKey(state.lesson.id));
   if (saved) {
     els.code.value = saved.code || '';
-    els.label.value = saved.label || '';
     state.studentId = saved.studentId || '';
     state.card = saved.card || '';
-    els.loadSid.value = state.studentId;
   }
+  if (!state.studentId && state.cfg.askIdentity) state.studentId = els.sid.value.trim();
+  els.loadSid.value = state.studentId;
   if (saved && Array.isArray(saved.transcript) && saved.transcript.length > 0) {
     state.token = saved.token || null;
     state.transcript = saved.transcript;
