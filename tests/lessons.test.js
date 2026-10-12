@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createCardStore } from '../server/cards.js';
 import { parseStage } from '../server/chat.js';
 import { loadConfig } from '../server/config.js';
+import { loadLessons } from '../server/lessons.js';
 import { createLogger } from '../server/logger.js';
 import { signState } from '../server/state.js';
 import { memoryCardStore, SECRET, startHarness } from './helpers.js';
@@ -12,16 +13,70 @@ const CODE = 'sun-48217x';
 const MOCK_CARD = '정리 카드\n- 선택한 기술: 수소차\n- 나만의 탐구 질문: "수소를 만드는 과정까지 따지면 수소차는 탄소를 줄일까?"';
 
 describe('차시 나누기', () => {
-  it('설정에 차시 목록이 오고, 3차시는 아직 열리지 않았다', async () => {
+  it('설정에 1~3차시 목록이 오고, 3차시는 8단계다', async () => {
     const h = await startHarness();
     try {
       const cfg = await (await fetch(`${h.base}/api/config`)).json();
-      assert.deepEqual(cfg.lessons.map((l) => [l.id, l.available]), [[1, true], [2, true], [3, false]]);
+      assert.deepEqual(cfg.lessons.map((l) => [l.id, l.available, l.stages.length]), [[1, true, 6], [2, true, 6], [3, true, 8]]);
       assert.equal(cfg.lessons[1].stages[0], '주장 확인');
+      assert.equal(cfg.lessons[2].stages[7], '수정 전후 비교 및 성찰');
+      assert.deepEqual(cfg.lessons.map((l) => [l.makesCard, l.usesCard]), [[true, false], [false, true], [false, false]]);
       assert.equal(cfg.cardStorage, false);
-      assert.ok(!JSON.stringify(cfg).includes('[가장 중요한 원칙]'), '프롬프트 내용은 보내지 않는다');
+      const sent = JSON.stringify(cfg);
+      for (const secret of ['[가장 중요한 원칙]', '[가장 중요한 운영 원칙]', '설계 심사 챗봇']) {
+        assert.ok(!sent.includes(secret), `프롬프트 내용은 보내지 않는다: ${secret}`);
+      }
       const health = await (await fetch(`${h.base}/api/health`)).json();
-      assert.deepEqual(Object.keys(health.promptVersions), ['1', '2']);
+      assert.deepEqual(Object.keys(health.promptVersions), ['1', '2', '3']);
+    } finally { await h.close(); }
+  });
+
+  it('3차시 프롬프트의 단계 머리글이 차시 목록의 단계 이름과 같다', () => {
+    const lesson = loadLessons().get(3);
+    const total = lesson.stages.length;
+    lesson.stages.forEach((name, i) => {
+      const header = `[단계 ${i + 1}/${total} · ${name}]`;
+      assert.ok(lesson.prompt.text.includes(header), header);
+      assert.deepEqual(parseStage(header, total), { stage: i + 1, name });
+    });
+  });
+
+  it('3차시는 3차시 프롬프트와 8단계 머리글을 쓰고, 1차시 카드는 붙이지 않는다', async () => {
+    const h = await startHarness({ RATE_PER_SESSION_PER_MIN: '20' }); // 한 대화에서 9번 연달아 보낸다
+    try {
+      let r = await h.chat({ message: '안녕하세요! 시작할게요.', lesson: 3, card: MOCK_CARD });
+      assert.equal(r.status, 200);
+      let done = h.doneOf(r);
+      assert.deepEqual([done.stage, done.stageName], [1, '기존 기술의 문제 확인']);
+      const { body } = h.mock.requests.at(-1);
+      assert.ok(body.system[0].text.includes('설계 심사 챗봇'));
+      assert.equal(body.messages[0].content, '안녕하세요! 시작할게요.');
+      assert.equal(h.logs.at(-1).lesson, 3);
+
+      // 모의 서버는 턴마다 한 단계씩 올라간다: 8단계까지 가고 그 뒤로는 8단계에 머문다.
+      for (let turn = 2; turn <= 9; turn += 1) {
+        r = await h.chat({ message: `답 ${turn}`, lesson: 3, state: done.state });
+        assert.equal(r.status, 200);
+        done = h.doneOf(r);
+      }
+      assert.deepEqual([done.stage, done.stageName], [8, '수정 전후 비교 및 성찰']);
+      assert.equal(h.logs.at(-1).stage, 8);
+
+      // 3차시 대화 정보는 다른 차시에서 쓸 수 없다.
+      const crossed = await h.chat({ message: '이어서', lesson: 2, state: done.state });
+      assert.equal(crossed.status, 400);
+      assert.match(crossed.json.message, /다른 차시/);
+    } finally { await h.close(); }
+  });
+
+  it('학생 메시지는 기본 2000자까지 받는다(3차시 설계 양식)', async () => {
+    const h = await startHarness();
+    try {
+      assert.equal(h.config.maxStudentChars, 2000);
+      assert.equal((await h.chat({ message: '가'.repeat(2000), lesson: 3 })).status, 200);
+      const long = await h.chat({ message: '가'.repeat(2001), lesson: 3 });
+      assert.equal(long.status, 400);
+      assert.equal(long.json.error, 'too_long_message');
     } finally { await h.close(); }
   });
 
@@ -56,10 +111,10 @@ describe('차시 나누기', () => {
     } finally { await h.close(); }
   });
 
-  it('열리지 않은 차시와 다른 차시의 대화 정보는 거절한다', async () => {
+  it('없는 차시와 다른 차시의 대화 정보는 거절한다', async () => {
     const h = await startHarness();
     try {
-      for (const lesson of [3, 9, 'x']) {
+      for (const lesson of [0, 4, 9, 'x']) {
         const r = await h.chat({ message: '안녕', lesson });
         assert.equal(r.status, 400, String(lesson));
         assert.equal(r.json.error, 'bad_lesson');
@@ -106,7 +161,7 @@ describe('차시 나누기', () => {
     } finally { await h.close(); }
   });
 
-  it('두 차시 프롬프트 모두 이어 하기를 다루고, 끝난 대화는 이어 하기를 안내한다', async () => {
+  it('모든 차시 프롬프트가 이어 하기를 다루고, 끝난 대화는 이어 하기를 안내한다', async () => {
     const h = await startHarness({ SESSION_MAX_AGE_HOURS: '1' });
     try {
       for (const [, lesson] of h.lessons) assert.ok(lesson.prompt.text.includes('[이전 대화 이어 하기]'), `${lesson.id}차시`);
@@ -122,6 +177,8 @@ describe('차시 나누기', () => {
     assert.deepEqual(parseStage('[단계 2/6 · 근거 확인]\n본문', 6), { stage: 2, name: '근거 확인' });
     assert.equal(parseStage('[단계 2/5 · 근거 확인]', 6), null);
     assert.equal(parseStage('[단계 0/6 · 없음]', 6), null);
+    assert.equal(parseStage('[단계 7/8 · 최종 설계안]', 6), null);
+    assert.deepEqual(parseStage('[단계 7/8 · 최종 설계안]', 8), { stage: 7, name: '최종 설계안' });
   });
 });
 
@@ -156,6 +213,28 @@ describe('대화 기록과 학번·이름', () => {
     const logger = createLogger({ logChats: true }, { client: { from: () => ({ insert: async (r) => { rows.push(...r); return { error: null }; } }) } });
     await logger.log({ sessionId: 's', lesson: 1, studentId: '20101', studentName: '홍길동', stage: 2, flagged: false, model: 'm', promptVersion: 'v', student: '학생 글', tutor: '챗봇 글' });
     assert.deepEqual(rows.map((r) => [r.role, r.student_id, r.student_name, r.lesson]), [['student', '20101', '홍길동', 1], ['tutor', '20101', '홍길동', 1]]);
+  });
+
+  it('표의 단계 범위가 옛것(1~6)이라 막히면 단계만 비우고 다시 남긴다', async () => {
+    const rows = [];
+    const calls = [];
+    const client = { from: () => ({ insert: async (r) => {
+      calls.push(r.map((x) => x.stage));
+      if (r.some((x) => x.stage > 6)) return { error: { code: '23514', message: 'violates check constraint "chat_logs_stage_check"' } };
+      rows.push(...r);
+      return { error: null };
+    } }) };
+    const logger = createLogger({ logChats: true }, { client });
+    const errors = [];
+    const original = console.error;
+    console.error = (m) => errors.push(String(m));
+    try {
+      await logger.log({ sessionId: 's', lesson: 3, studentId: '20101', studentName: '홍길동', stage: 8, flagged: false, model: 'm', promptVersion: 'v', student: '성찰', tutor: '마무리' });
+    } finally { console.error = original; }
+    assert.deepEqual(calls, [[8, 8], [null, null]]);
+    assert.deepEqual(rows.map((r) => [r.role, r.lesson, r.stage, r.content]), [['student', 3, null, '성찰'], ['tutor', 3, null, '마무리']]);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /schema\.sql/);
   });
 });
 

@@ -28,7 +28,13 @@ export function createLogger(config, { client } = {}) {
       const rows = [{ ...base, role: 'student', content: String(student).slice(0, MAX_CONTENT) }];
       if (tutor) rows.push({ ...base, role: 'tutor', content: String(tutor).slice(0, MAX_CONTENT), flagged: false });
       try {
-        const { error } = await supabase.from('chat_logs').insert(rows);
+        let { error } = await supabase.from('chat_logs').insert(rows);
+        // 표의 단계 범위가 아직 1~6이면(schema.sql을 다시 실행하기 전) 3차시 7·8단계 기록이 통째로 막힌다.
+        // 대화 내용을 잃지 않도록 단계만 비우고 한 번 더 남긴다.
+        if (error?.code === '23514' && base.stage != null) {
+          console.error(`[log] 표가 단계 ${base.stage}을(를) 받지 않아 단계 없이 기록해요. supabase/schema.sql을 다시 실행해 주세요.`);
+          ({ error } = await supabase.from('chat_logs').insert(rows.map((r) => ({ ...r, stage: null }))));
+        }
         if (error) console.error(`[log] 기록 실패: ${error.code || ''} ${error.message}`);
       } catch (err) {
         console.error(`[log] 기록 실패: ${err?.message || err}`);

@@ -2,6 +2,7 @@
  * 수업 전에 한 번 실행하는 점검: 실제 Anthropic API로 2턴 대화를 해 본다.
  *   npm run check:api        (1차시)
  *   npm run check:api -- 2   (2차시)
+ *   npm run check:api -- 3   (3차시)
  * 확인하는 것: 키·모델·effort 설정, 스트리밍, 시스템 프롬프트 캐시, 그리고
  * 챗봇 응답(thinking 블록 포함)을 기록에 그대로 이어 붙였을 때 API가 받아들이는지.
  * 키 값은 출력하지 않는다.
@@ -18,6 +19,12 @@ const SCRIPTS = {
     card: '정리 카드\n- 선택한 기술: 태양광 발전\n- 나만의 탐구 질문: 태양광 발전은 제조와 폐기까지 고려해도 탄소 저감 기술이라고 할 수 있을까?',
     first: '안녕하세요! 시작할게요.',
     second: '① 태양광 발전 ② 태양광 발전은 화석 연료 발전을 대신해 온실가스 배출을 줄일 수 있다 ③ 발전할 때 연료를 태우지 않기 때문이다',
+    secondStages: [1, 2],
+  },
+  3: {
+    card: '',
+    first: '안녕하세요! 시작할게요.',
+    second: '① 태양광 발전 ② 밤이나 흐린 날에는 발전량이 크게 줄어든다 ③ 전기가 필요한 시간에 발전을 못 하면 그 사이를 화석 연료 발전으로 채워야 해서 탄소 저감 효과가 줄어들기 때문이다',
     secondStages: [1, 2],
   },
 };
@@ -37,7 +44,7 @@ if (!config.anthropicApiKey) {
 const lesson = loadLessons().get(lessonId);
 const script = SCRIPTS[lessonId];
 if (!lesson || !script) {
-  console.error(`${process.argv[2]}차시는 점검할 수 없어요. 1 또는 2를 적어 주세요.`);
+  console.error(`${process.argv[2]}차시는 점검할 수 없어요. 1, 2, 3 중 하나를 적어 주세요.`);
   process.exit(1);
 }
 

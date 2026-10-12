@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 
 /**
  * Anthropic Messages API(스트리밍)를 흉내 내는 모의 서버. 테스트와 화면 확인용.
- * 시스템 프롬프트로 차시를 알아보고(2차시: '비판적 토론'), 마지막 학생 메시지에 들어 있는 낱말로 동작이 바뀐다.
+ * 시스템 프롬프트로 차시를 알아보고(2차시: '비판적 토론', 3차시: '설계 심사 챗봇'), 마지막 학생 메시지에 들어 있는 낱말로 동작이 바뀐다.
  *   REFUSE → 거절(stop_reason: refusal) / ERR401, ERR429, ERR500 → 해당 오류
  *   ERR402(결제/한도) / TRUNC(max_tokens로 잘림) / CARD(정리 카드가 든 응답)
  *   SLOW → 천천히 / EMPTY → 글 없이 thinking만 / 그 외 → 단계 머리글이 있는 정상 응답
@@ -10,7 +10,14 @@ import { createServer } from 'node:http';
 const STAGE_NAMES = {
   1: ['기술 고르기', '해결하려는 문제', '과학적 원리', '배출이 줄어드는 이유', '가장 큰 문제점', '나만의 탐구 질문'],
   2: ['주장 확인', '근거 확인', '주장-근거 연결 검토', '반론 제시', '반론 평가', '최종 판단과 성찰'],
+  3: ['기존 기술의 문제 확인', '최초 설계안', '자기 점검', 'AI 설계 심사', '심사 의견 판단', '설계 수정', '최종 설계안', '수정 전후 비교 및 성찰'],
 };
+
+function lessonOf(system) {
+  if (system.includes('설계 심사 챗봇')) return 3;
+  if (system.includes('비판적 토론')) return 2;
+  return 1;
+}
 
 function lastUserText(messages) {
   const last = messages[messages.length - 1];
@@ -47,9 +54,10 @@ export function startMockAnthropic() {
       if (text.includes('ERR500')) return error(500, 'api_error', 'internal boom');
 
       const turn = body.messages.filter((m) => m.role === 'user').length;
-      const stage = Math.min(turn, 6);
-      const lesson = body.system?.[0]?.text?.includes('비판적 토론') ? 2 : 1;
-      const header = `[단계 ${stage}/6 · ${STAGE_NAMES[lesson][stage - 1]}]\n`;
+      const lesson = lessonOf(body.system?.[0]?.text || '');
+      const total = STAGE_NAMES[lesson].length;
+      const stage = Math.min(turn, total);
+      const header = `[단계 ${stage}/${total} · ${STAGE_NAMES[lesson][stage - 1]}]\n`;
       const delay = text.includes('SLOW') ? 250 : 0;
 
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });

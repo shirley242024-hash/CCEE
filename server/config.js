@@ -73,7 +73,7 @@ export function loadConfig(env = process.env) {
     sessionMaxAgeMs: int(env.SESSION_MAX_AGE_HOURS, 12) * 60 * 60 * 1000,
     accessCode: env.ACCESS_CODE || '',
 
-    maxStudentChars: int(env.MAX_STUDENT_CHARS, 1000),
+    maxStudentChars: int(env.MAX_STUDENT_CHARS, 2000),
     maxTurns: int(env.MAX_TURNS, 80),
     maxStateChars: int(env.MAX_STATE_CHARS, 1_500_000),
     perSessionPerMinute: int(env.RATE_PER_SESSION_PER_MIN, 8),
