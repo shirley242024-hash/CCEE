@@ -4,14 +4,14 @@
 create table if not exists public.chat_logs (
   id             bigint generated always as identity primary key,
   created_at     timestamptz not null default now(),
-  session_id     text        not null,
-  label          text,                                   -- 학생이 적은 별명/번호(선택)
+  session_id     text        not null check (char_length(session_id) <= 64),
+  label          text        check (char_length(label) <= 30),   -- 학생이 적은 별명/번호(선택)
   role           text        not null check (role in ('student', 'tutor')),
   content        text        not null check (char_length(content) <= 4000),
   stage          smallint    check (stage between 1 and 6),
   flagged        boolean     not null default false,     -- 위기 신호 표현이 감지된 학생 메시지
-  model          text,
-  prompt_version text
+  model          text        check (char_length(model) <= 100),
+  prompt_version text        check (char_length(prompt_version) <= 16)
 );
 
 create index if not exists chat_logs_session_idx on public.chat_logs (session_id, created_at);
@@ -19,8 +19,13 @@ create index if not exists chat_logs_flagged_idx on public.chat_logs (created_at
 
 alter table public.chat_logs enable row level security;
 
--- 공개 키(anon 역할)에는 INSERT만 허용합니다. SELECT/UPDATE/DELETE 정책은 만들지 않으므로
--- 공개 키로는 기록을 읽거나 고치거나 지울 수 없습니다.
+-- 공개 키(anon 역할)에는 INSERT만 허용합니다. 테이블 권한(grant)과 행 정책(RLS)을 둘 다 INSERT로만 좁혀서,
+-- 나중에 정책 하나가 실수로 추가되어도 공개 키로 기록을 읽거나 지울 수 없게 합니다.
+revoke all on public.chat_logs from anon, authenticated;
+grant insert on public.chat_logs to anon;
+-- identity 열(id)에 쓰려면 시퀀스 권한도 필요합니다.
+grant usage on all sequences in schema public to anon;
+
 drop policy if exists "anon can insert chat logs" on public.chat_logs;
 create policy "anon can insert chat logs"
   on public.chat_logs

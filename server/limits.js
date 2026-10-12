@@ -25,6 +25,12 @@ export class SlidingWindowLimiter {
     return true;
   }
 
+  /** 창 안에 쌓인 횟수(기록하지 않고 읽기만). */
+  count(key, now = Date.now()) {
+    const cutoff = now - this.windowMs;
+    return (this.hits.get(key) || []).filter((t) => t > cutoff).length;
+  }
+
   sweep(now = Date.now()) {
     const cutoff = now - this.windowMs;
     for (const [key, list] of this.hits) {
@@ -60,6 +66,11 @@ export class DailyCap {
     if (this.count >= this.max) return false;
     this.count += 1;
     return true;
+  }
+
+  /** Anthropic 쪽 실패로 응답을 못 만든 요청은 상한에서 되돌린다. */
+  refund(now = new Date()) {
+    if (DailyCap.today(now) === this.day && this.count > 0) this.count -= 1;
   }
 }
 

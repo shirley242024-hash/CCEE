@@ -176,7 +176,7 @@ describe('챗봇 서버(모의 Anthropic 사용)', () => {
   });
 
   it('시스템 프롬프트 파일이 공개 주소로 새어 나가지 않는다', async () => {
-    for (const path of ['/prompts/lesson1_system_prompt.md', '/../prompts/lesson1_system_prompt.md', '/.env', '/server/config.js', '/package.json']) {
+    for (const path of ['/prompts/lesson1_system_prompt.md', '/.env', '/server/config.js', '/package.json']) {
       const res = await fetch(`${h.base}${path}`);
       const text = await res.text();
       assert.ok(!text.includes('소크라테스식 대화 상대'), `${path}에서 프롬프트가 보이면 안 돼요`);

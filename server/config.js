@@ -41,8 +41,12 @@ export function loadConfig(env = process.env) {
   }
 
   if (prod && !env.ANTHROPIC_API_KEY) errors.push('운영에서는 ANTHROPIC_API_KEY가 꼭 필요해요.');
-  if (prod && !env.ACCESS_CODE) {
+  // 키가 있는데 수업 코드가 없으면, 운영이 아니어도 주소를 아는 누구나 API 비용을 쓸 수 있다.
+  if (env.ANTHROPIC_API_KEY && !env.ACCESS_CODE) {
     warnings.push('ACCESS_CODE가 없어요. 주소를 아는 누구나 챗봇을 쓰고 API 비용이 발생할 수 있어요.');
+  }
+  if (env.ACCESS_CODE && env.ACCESS_CODE.length < 8) {
+    warnings.push('ACCESS_CODE가 8자보다 짧아요. 추측하기 어려운 8자 이상(영문+숫자)을 권해요.');
   }
 
   const logChats = env.LOG_CHATS === 'true';
@@ -58,7 +62,8 @@ export function loadConfig(env = process.env) {
     anthropicApiKey: env.ANTHROPIC_API_KEY || '',
     model: env.CHATBOT_MODEL || 'claude-opus-5-5',
     effort,
-    maxTokens: int(env.CHATBOT_MAX_TOKENS, 4096),
+    // 스트리밍이라 크게 잡아도 시간 초과가 없다. thinking도 이 한도에 들어가므로 너무 작게 잡지 않는다.
+    maxTokens: int(env.CHATBOT_MAX_TOKENS, 16000),
     systemPromptPath: env.SYSTEM_PROMPT_PATH || 'prompts/lesson1_system_prompt.md',
 
     sessionSecret,
@@ -70,6 +75,9 @@ export function loadConfig(env = process.env) {
     maxStateChars: int(env.MAX_STATE_CHARS, 240_000),
     perSessionPerMinute: int(env.RATE_PER_SESSION_PER_MIN, 8),
     perIpPerMinute: int(env.RATE_PER_IP_PER_MIN, 240),
+    newConversationsPerIpPerMinute: int(env.NEW_CONVERSATIONS_PER_IP_PER_MIN, 60),
+    badCodePerIpPerMinute: int(env.BAD_CODE_PER_IP_PER_MIN, 30),
+    maxConcurrentStreams: int(env.MAX_CONCURRENT_STREAMS, 40),
     dailyRequestCap: int(env.DAILY_REQUEST_CAP, 3000),
 
     logChats,

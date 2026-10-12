@@ -21,9 +21,17 @@ const client = new Anthropic({ apiKey: config.anthropicApiKey || undefined, maxR
 const logger = createLogger(config);
 const app = createApp({ config, client, logger, systemPrompt });
 
-const server = app.listen(config.port, () => {
+const server = app.listen(config.port);
+server.once('listening', () => {
   console.log(`챗봇 서버를 시작했어요: http://localhost:${config.port}`);
   console.log(`  모델=${config.model} effort=${config.effort} 프롬프트=${systemPrompt.version} 수업코드=${config.accessCode ? '사용' : '없음'} 대화기록=${logger.enabled ? '저장' : '저장 안 함'}`);
+});
+server.once('error', (err) => {
+  const reason = err.code === 'EADDRINUSE'
+    ? `포트 ${config.port}를 다른 프로그램이 쓰고 있어요. 이미 켜 둔 서버가 있는지 확인하거나 .env에 PORT=3001처럼 다른 번호를 적어 보세요.`
+    : err.message;
+  console.error(`서버를 시작하지 못했어요: ${reason}`);
+  process.exit(1);
 });
 
 function shutdown() {

@@ -18,8 +18,13 @@ const app = createApp({
   logger: { enabled: false, async log() {} },
   systemPrompt: loadSystemPrompt(config.systemPromptPath),
 });
-app.listen(config.port, () => {
+const server = app.listen(config.port);
+server.once('listening', () => {
   console.log(`데모 모드: http://localhost:${config.port}`);
   console.log('정해진 문장으로 답하는 모의 응답이에요. 실제 챗봇이 아니에요.');
   console.log('테스트용 낱말: SLOW(느리게) / REFUSE(거절) / ERR429(오류) / EMPTY(빈 응답)');
+});
+server.once('error', (err) => {
+  console.error(`데모를 시작하지 못했어요: ${err.code === 'EADDRINUSE' ? `포트 ${config.port}가 이미 쓰이고 있어요. PORT=3001 처럼 다른 번호로 실행해 보세요.` : err.message}`);
+  process.exit(1);
 });
