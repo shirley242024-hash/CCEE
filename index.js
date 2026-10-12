@@ -4,16 +4,13 @@
  * 화면 파일(public/)은 Vercel이 직접 보내고, 이 앱은 /api 요청만 받는다.
  * 내 PC에서 실행할 때는 이 파일이 아니라 server/index.js(npm start)를 쓴다.
  */
-import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import express from 'express';
 import { createApp } from './server/app.js';
+import { createCardStore } from './server/cards.js';
 import { loadConfig } from './server/config.js';
+import { loadLessons } from './server/lessons.js';
 import { createLogger } from './server/logger.js';
-import { loadSystemPrompt } from './server/prompt.js';
-
-// 경로를 고정된 문자열로 적어야 Vercel이 배포 묶음에 프롬프트 파일을 넣는다.
-const PROMPT_FILE = fileURLToPath(new URL('./prompts/lesson1_system_prompt.md', import.meta.url));
 
 // 함수가 여러 개로 늘어나도 같은 키와 비밀 값을 써야 하므로 항상 운영 기준으로 검사한다.
 // Vercel은 X-Forwarded-For를 실제 접속 주소로 덮어쓰므로 프록시 한 단계를 믿는다.
@@ -34,9 +31,9 @@ if (config.errors.length > 0) {
   app = configErrorApp();
 } else {
   config.warnings.forEach((w) => console.warn(`[주의] ${w}`));
-  const systemPrompt = loadSystemPrompt(PROMPT_FILE);
+  // 차시별 프롬프트 경로는 server/lessons.js에 고정된 문자열로 적혀 있어 Vercel 배포 묶음에 들어간다.
   const client = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 2 });
-  app = createApp({ config, client, logger: createLogger(config), systemPrompt });
+  app = createApp({ config, client, logger: createLogger(config), lessons: loadLessons(), cardStore: createCardStore(config) });
 }
 
 export default app;

@@ -18,8 +18,8 @@ export function createLogger(config, { client } = {}) {
 
   return {
     enabled: true,
-    async log({ sessionId, label, stage, flagged, model, promptVersion, student, tutor }) {
-      const base = { session_id: sessionId, label: label || null, stage: stage ?? null, flagged: !!flagged, model, prompt_version: promptVersion };
+    async log({ sessionId, lesson, label, stage, flagged, model, promptVersion, student, tutor }) {
+      const base = { session_id: sessionId, lesson: lesson ?? null, label: label || null, stage: stage ?? null, flagged: !!flagged, model, prompt_version: promptVersion };
       const rows = [{ ...base, role: 'student', content: String(student).slice(0, MAX_CONTENT) }];
       if (tutor) rows.push({ ...base, role: 'tutor', content: String(tutor).slice(0, MAX_CONTENT), flagged: false });
       try {

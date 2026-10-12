@@ -1,4 +1,4 @@
-/* 배치: 한 화면 채팅. 위쪽에 진행 단계 6칸, 가운데 대화, 아래 입력창. */
+/* 배치: 한 화면 채팅. 위쪽에 진행 단계, 가운데 대화, 아래 입력창. 처음에는 차시 고르기 화면. */
 :root {
   --bg: #eef3f2;
   --surface: #ffffff;
@@ -85,8 +85,8 @@ body {
   padding-top: max(12px, env(safe-area-inset-top, 0px));
 }
 .titles { min-width: 0; }
-h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; text-wrap: balance; }
-.titles p { margin: 0; color: var(--muted); font-size: 0.875rem; }
+h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; text-wrap: balance; word-break: keep-all; }
+.titles p { margin: 0; color: var(--muted); font-size: 0.875rem; word-break: keep-all; }
 
 .ghost {
   flex: none;
@@ -101,6 +101,7 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
 }
 .ghost:hover { color: var(--ink); border-color: var(--muted); }
 .ghost.confirm { color: var(--err-ink); background: var(--err-bg); border-color: transparent; }
+.top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 
 /* ---------- 진행 단계 ---------- */
 .steps {
@@ -255,6 +256,38 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
 .hint { margin: 0; font-size: 0.8125rem; color: var(--muted); }
 .fine { margin: 0; font-size: 0.8125rem; color: var(--muted); }
 
+/* ---------- 차시 고르기 ---------- */
+.lesson-list { display: flex; flex-direction: column; gap: 10px; }
+.lesson-card {
+  font: inherit; color: var(--ink); text-align: left;
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px 16px; cursor: pointer; min-height: 44px;
+}
+.lesson-card:not(:disabled):hover { border-color: var(--accent); }
+.lesson-card:disabled { cursor: not-allowed; opacity: 0.6; }
+.lesson-card .lt { font-weight: 700; word-break: keep-all; }
+.lesson-card .ls { font-size: 0.875rem; color: var(--muted); word-break: keep-all; }
+
+/* ---------- 1차시 정리 카드(2차시 시작 카드 안, 1차시 카드 저장 줄) ---------- */
+.card-in { display: flex; flex-direction: column; gap: 8px; }
+.card-in h3 { margin: 0; font-size: 0.9375rem; }
+.card-in .opt { color: var(--muted); font-weight: 400; }
+.card-in textarea, .sid {
+  font: inherit; color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; min-width: 0;
+}
+.card-in textarea { resize: vertical; line-height: 1.5; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sid { width: 8em; letter-spacing: 0.08em; }
+.secondary {
+  font: inherit; font-size: 0.9375rem; font-weight: 650;
+  color: var(--accent); background: var(--accent-soft);
+  border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer; min-height: 40px;
+}
+.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.card-save { display: flex; flex-direction: column; gap: 4px; }
+
 /* ---------- 입력창 ---------- */
 .composer {
   display: grid;
@@ -310,4 +343,8 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
 }
 @media (max-width: 520px) {
   .msg { max-width: 94%; }
+  /* 좁은 화면에서는 위쪽 버튼을 제목 아래 한 줄로 내린다 */
+  .top { flex-wrap: wrap; }
+  .titles { flex: 1 1 100%; }
+  .top-actions { justify-content: flex-start; }
 }

@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createApp } from './app.js';
+import { createCardStore } from './cards.js';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
-import { loadSystemPrompt } from './prompt.js';
+import { loadLessons } from './lessons.js';
 
 const config = loadConfig();
 
@@ -16,15 +17,15 @@ if (!config.anthropicApiKey) {
   console.warn('[주의] ANTHROPIC_API_KEY가 없어요. 화면은 열리지만 대화 요청은 실패해요.');
 }
 
-const systemPrompt = loadSystemPrompt(config.systemPromptPath);
+const lessons = loadLessons();
 const client = new Anthropic({ apiKey: config.anthropicApiKey || undefined, maxRetries: 2 });
 const logger = createLogger(config);
-const app = createApp({ config, client, logger, systemPrompt });
+const app = createApp({ config, client, logger, lessons, cardStore: createCardStore(config) });
 
 const server = app.listen(config.port);
 server.once('listening', () => {
   console.log(`챗봇 서버를 시작했어요: http://localhost:${config.port}`);
-  console.log(`  모델=${config.model} effort=${config.effort} 프롬프트=${systemPrompt.version} 수업코드=${config.accessCode ? '사용' : '없음'} 대화기록=${logger.enabled ? '저장' : '저장 안 함'}`);
+  console.log(`  모델=${config.model} effort=${config.effort} 프롬프트=${[...lessons].map(([id, l]) => `${id}차시:${l.prompt.version}`).join(',')} 수업코드=${config.accessCode ? '사용' : '없음'} 대화기록=${logger.enabled ? '저장' : '저장 안 함'} 학번카드=${config.saveCards ? '사용' : '안 씀'}`);
 });
 server.once('error', (err) => {
   const reason = err.code === 'EADDRINUSE'

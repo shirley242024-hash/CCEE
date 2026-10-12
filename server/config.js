@@ -53,6 +53,10 @@ export function loadConfig(env = process.env) {
   if (logChats && (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY)) {
     errors.push('LOG_CHATS=true이면 SUPABASE_URL과 SUPABASE_PUBLISHABLE_KEY가 필요해요.');
   }
+  const saveCards = env.SAVE_CARDS === 'true';
+  if (saveCards && (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY)) {
+    errors.push('SAVE_CARDS=true이면 SUPABASE_URL과 SUPABASE_SECRET_KEY가 필요해요.');
+  }
 
   return {
     prod,
@@ -64,7 +68,6 @@ export function loadConfig(env = process.env) {
     effort,
     // 스트리밍이라 크게 잡아도 시간 초과가 없다. thinking도 이 한도에 들어가므로 너무 작게 잡지 않는다.
     maxTokens: int(env.CHATBOT_MAX_TOKENS, 16000),
-    systemPromptPath: env.SYSTEM_PROMPT_PATH || 'prompts/lesson1_system_prompt.md',
 
     sessionSecret,
     sessionMaxAgeMs: int(env.SESSION_MAX_AGE_HOURS, 12) * 60 * 60 * 1000,
@@ -79,10 +82,13 @@ export function loadConfig(env = process.env) {
     badCodePerIpPerMinute: int(env.BAD_CODE_PER_IP_PER_MIN, 30),
     maxConcurrentStreams: int(env.MAX_CONCURRENT_STREAMS, 40),
     dailyRequestCap: int(env.DAILY_REQUEST_CAP, 3000),
+    cardRequestsPerIpPerMinute: int(env.CARD_REQUESTS_PER_IP_PER_MIN, 120),
 
     logChats,
+    saveCards,
     supabaseUrl: env.SUPABASE_URL || '',
     supabaseKey: env.SUPABASE_PUBLISHABLE_KEY || '',
+    supabaseSecretKey: env.SUPABASE_SECRET_KEY || '',
 
     warnings,
     errors,

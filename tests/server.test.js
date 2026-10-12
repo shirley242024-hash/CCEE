@@ -168,7 +168,7 @@ describe('챗봇 서버(모의 Anthropic 사용)', () => {
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(res.headers.get('x-powered-by'), null);
     const html = await res.text();
-    assert.ok(html.includes('탄소 저감 기술 탐구'));
+    assert.ok(html.includes('탄소 저감 과학기술 수업'));
     const js = await fetch(`${h.base}/app.js`);
     assert.equal(js.status, 200);
     const missing = await fetch(`${h.base}/api/nothing`);
@@ -176,7 +176,7 @@ describe('챗봇 서버(모의 Anthropic 사용)', () => {
   });
 
   it('시스템 프롬프트 파일이 공개 주소로 새어 나가지 않는다', async () => {
-    for (const path of ['/prompts/lesson1_system_prompt.md', '/.env', '/server/config.js', '/package.json']) {
+    for (const path of ['/prompts/lesson1_system_prompt.md', '/prompts/lesson2_system_prompt.md', '/.env', '/server/config.js', '/package.json']) {
       const res = await fetch(`${h.base}${path}`);
       const text = await res.text();
       assert.ok(!text.includes('소크라테스식 대화 상대'), `${path}에서 프롬프트가 보이면 안 돼요`);
