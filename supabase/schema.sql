@@ -1,5 +1,5 @@
 -- Supabase 대시보드의 SQL Editor에 이 파일 전체를 붙여 넣어 실행하세요. 여러 번 실행해도 안전합니다.
--- 1) chat_logs     : 대화 기록(LOG_CHATS=true일 때). 서버는 공개용(publishable) 키로 '쓰기만' 합니다.
+-- 1) chat_logs     : 대화 기록(LOG_CHATS=true일 때). 서버는 비밀(secret) 키로 씁니다(비밀 키가 없으면 공개용 키로 '쓰기만').
 -- 2) lesson1_cards : 학번으로 저장한 1차시 정리 카드(SAVE_CARDS=true일 때). 서버의 비밀(secret) 키로만 읽고 씁니다.
 -- 읽기는 대시보드(교사 계정)에서 합니다.
 
