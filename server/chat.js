@@ -18,12 +18,20 @@ export function buildRequest({ config, systemPrompt, messages }) {
   return request;
 }
 
-const HEADER_RE = /^\s*\[단계\s*([1-6])\s*\/\s*6\s*·\s*([^\]\n]+)\]/;
+/** 카드를 쓰는 차시의 첫 메시지: 1차시 정리 카드를 학생 글 앞에 붙인다. */
+export function withCard(card, message) {
+  return card ? `[1차시 정리 카드]\n${card}\n\n${message}` : message;
+}
 
-/** 챗봇 응답 첫 줄의 `[단계 n/6 · 이름]`에서 단계를 읽는다. */
-export function parseStage(text) {
+const HEADER_RE = /^\s*\[단계\s*(\d)\s*\/\s*(\d)\s*·\s*([^\]\n]+)\]/;
+
+/** 챗봇 응답 첫 줄의 `[단계 n/전체 · 이름]`에서 단계를 읽는다. 전체 단계 수가 다르면 무시한다. */
+export function parseStage(text, total = 6) {
   const m = HEADER_RE.exec(text || '');
-  return m ? { stage: Number(m[1]), name: m[2].trim() } : null;
+  if (!m) return null;
+  const stage = Number(m[1]);
+  if (Number(m[2]) !== total || stage < 1 || stage > total) return null;
+  return { stage, name: m[3].trim() };
 }
 
 export function textOf(content) {

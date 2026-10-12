@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <title>탄소 저감 기술 탐구</title>
+  <title>탄소 저감 과학기술 수업</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
 </head>
@@ -12,23 +12,28 @@
   <div class="app">
     <header class="top">
       <div class="titles">
-        <h1>탄소 저감 기술 탐구</h1>
-        <p>1차시 · 질문으로 함께 생각해요</p>
+        <h1 id="title">탄소 저감 과학기술 수업</h1>
+        <p id="subtitle">AI와 논쟁하며 탄소 저감 과학기술 제안하기</p>
       </div>
-      <button id="reset" class="ghost" type="button">처음부터 다시</button>
+      <div class="top-actions">
+        <button id="to-picker" class="ghost" type="button" hidden>차시 고르기</button>
+        <button id="reset" class="ghost" type="button" hidden>처음부터 다시</button>
+      </div>
     </header>
 
-    <ol id="steps" class="steps" aria-label="진행 단계"></ol>
+    <ol id="steps" class="steps" aria-label="진행 단계" hidden></ol>
     <p id="stage-caption" class="stage-caption" role="status"></p>
 
     <main id="main" class="main">
-      <section id="intro" class="intro" aria-labelledby="intro-title">
+      <section id="picker" class="intro" aria-labelledby="picker-title" hidden>
+        <h2 id="picker-title">오늘은 몇 차시인가요?</h2>
+        <div id="lesson-list" class="lesson-list"></div>
+        <p class="fine">선생님이 알려 준 차시를 골라요. 차시마다 대화는 따로 저장돼요.</p>
+      </section>
+
+      <section id="intro" class="intro" aria-labelledby="intro-title" hidden>
         <h2 id="intro-title">시작하기 전에</h2>
-        <ul class="rules">
-          <li>이 챗봇은 <strong>정답을 알려 주지 않아요.</strong> 질문에 내 말로 답하면서 스스로 알아가요.</li>
-          <li>탄소 저감 기술 하나를 골라 <strong>어떤 문제를 풀고 어떻게 작동하는지</strong> 알아보고, 마지막에 나만의 탐구 질문을 만들어요.</li>
-          <li>내 생각은 기후에너지환경부, IPCC, IEA 같은 <strong>기관 자료</strong>에서 직접 확인해요.</li>
-        </ul>
+        <ul id="rules" class="rules"></ul>
         <p id="log-notice" class="notice" hidden>대화 내용은 수업을 돕기 위해 선생님이 볼 수 있어요. 이름이나 연락처 같은 개인 정보는 쓰지 마세요.</p>
 
         <div class="fields">
@@ -44,13 +49,26 @@
           </div>
         </div>
 
+        <div id="card-in" class="card-in" hidden>
+          <h3>1차시 정리 카드 <span class="opt">(선택)</span></h3>
+          <p id="card-in-hint" class="hint">복사해 둔 1차시 정리 카드를 붙여 넣어요. 없으면 비워 두고 시작해도 돼요.</p>
+          <div id="card-load" class="row" hidden>
+            <label for="load-sid" class="sr-only">학번 5자리</label>
+            <input id="load-sid" class="sid" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="학번 5자리">
+            <button id="load-card" class="secondary" type="button">학번으로 불러오기</button>
+          </div>
+          <label for="card-text" class="sr-only">1차시 정리 카드</label>
+          <textarea id="card-text" rows="5" placeholder="1차시 정리 카드를 붙여 넣어요"></textarea>
+          <p id="card-status" class="hint" aria-live="polite"></p>
+        </div>
+
         <button id="start" class="primary" type="button">인사하며 시작하기</button>
         <p class="fine">챗봇의 말이 항상 맞는 것은 아니에요. 사실은 꼭 기관 자료로 확인하세요.</p>
       </section>
       <div id="log" class="thread" role="log" aria-live="polite" aria-label="대화"></div>
     </main>
 
-    <form id="composer" class="composer" autocomplete="off">
+    <form id="composer" class="composer" autocomplete="off" hidden>
       <label for="input" class="sr-only">내 생각</label>
       <textarea id="input" rows="1" placeholder="내 생각을 써 보세요" maxlength="2000"></textarea>
       <button id="send" class="primary" type="submit">보내기</button>

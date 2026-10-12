@@ -1,14 +1,20 @@
 // 학생용 채팅 화면. 서버가 준 글은 항상 textContent로만 그린다(HTML로 해석하지 않는다).
-const STAGES = ['기술 고르기', '해결하려는 문제', '과학적 원리', '배출이 줄어드는 이유', '가장 큰 문제점', '나만의 탐구 질문'];
-const STORE_KEY = 'ccee.lesson1.v2';
-const HEADER_RE = /^\s*\[단계\s*([1-6])\s*\/\s*6\s*·\s*([^\]\n]+)\]\s*/;
+// 차시 목록(제목, 단계 이름, 시작 안내)은 서버의 /api/config에서 받는다.
+const STORE_KEYS = { 1: 'ccee.lesson1.v2' }; // 1차시는 차시를 나누기 전과 같은 이름이라 열려 있던 대화가 이어진다
+const CURRENT_KEY = 'ccee.current';
+const HEADER_RE = /^\s*\[단계\s*(\d)\s*\/\s*(\d)\s*·\s*([^\]\n]+)\]\s*/;
 const START_TEXT = '안녕하세요! 시작할게요.';
+const CARD_NOTE = '(1차시 정리 카드를 함께 보냈어요)';
+const SID_RE = /^\d{5}$/;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
   main: $('#main'), log: $('#log'), steps: $('#steps'), caption: $('#stage-caption'), form: $('#composer'), input: $('#input'),
-  send: $('#send'), reset: $('#reset'), intro: $('#intro'), start: $('#start'), counter: $('#counter'),
+  send: $('#send'), reset: $('#reset'), toPicker: $('#to-picker'), intro: $('#intro'), start: $('#start'), counter: $('#counter'),
   codeField: $('#code-field'), code: $('#code'), labelField: $('#label-field'), label: $('#label'), logNotice: $('#log-notice'),
+  title: $('#title'), subtitle: $('#subtitle'), picker: $('#picker'), lessonList: $('#lesson-list'), rules: $('#rules'),
+  cardIn: $('#card-in'), cardInHint: $('#card-in-hint'), cardLoad: $('#card-load'), loadSid: $('#load-sid'), loadCard: $('#load-card'),
+  cardText: $('#card-text'), cardStatus: $('#card-status'),
 };
 const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
 
@@ -18,41 +24,52 @@ const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
  *  - 실패하면 이번에 보낸 말풍선을 지우고, 쓴 글을 입력창에 되돌려 놓는다.
  */
 const state = {
-  cfg: { requiresAccessCode: false, logging: false, maxChars: 1000 },
+  cfg: { requiresAccessCode: false, logging: false, cardStorage: false, maxChars: 1000, maxCardChars: 3000, lessons: [] },
   cfgOk: false,
   cfgError: '',
+  lesson: null, // 지금 하는 차시(차시 고르기 화면에서는 null)
   token: null,
   busy: false,
   stage: 0, // 서버가 확정한 현재 단계
   transcript: [], // { role: 'student' | 'tutor', text }
   pending: null, // 응답을 기다리는 중인 학생 글(새로고침해도 잃지 않도록 저장)
+  studentId: '', // 정리 카드를 저장하거나 불러올 때 쓴 학번
   leaving: false, // 새로고침·탭 닫기 중(이때의 연결 끊김은 실패로 처리하지 않는다)
 };
 window.addEventListener('pagehide', () => { state.leaving = true; });
 window.addEventListener('beforeunload', () => { state.leaving = true; });
 
-/* ---------- 저장(새로고침해도 대화 유지). 막혀 있어도 동작해야 한다. ---------- */
-function save() {
+/* ---------- 저장(새로고침해도 대화 유지). 차시마다 따로 저장한다. 막혀 있어도 동작해야 한다. ---------- */
+const storeKey = (id) => STORE_KEYS[id] || `ccee.lesson${id}.v1`;
+function readKey(key) {
   try {
-    sessionStorage.setItem(STORE_KEY, JSON.stringify({
-      token: state.token, stage: state.stage, transcript: state.transcript, pending: state.pending,
-      code: els.code.value, label: els.label.value,
-    }));
-  } catch { /* 저장 불가: 무시 */ }
-}
-function load() {
-  try {
-    const raw = sessionStorage.getItem(STORE_KEY);
+    const raw = sessionStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
+function save() {
+  if (!state.lesson) return;
+  try {
+    sessionStorage.setItem(storeKey(state.lesson.id), JSON.stringify({
+      token: state.token, stage: state.stage, transcript: state.transcript, pending: state.pending,
+      code: els.code.value, label: els.label.value, studentId: state.studentId,
+    }));
+  } catch { /* 저장 불가: 무시 */ }
+}
 function clearSaved() {
-  try { sessionStorage.removeItem(STORE_KEY); } catch { /* 무시 */ }
+  try { sessionStorage.removeItem(storeKey(state.lesson.id)); } catch { /* 무시 */ }
+}
+/** 지금 하는 차시를 기억한다. 0은 학생이 직접 '차시 고르기'로 나온 상태다. */
+function setCurrent(id) {
+  try { sessionStorage.setItem(CURRENT_KEY, String(id || 0)); } catch { /* 무시 */ }
 }
 
 /* ---------- 진행 단계 ---------- */
+const stageName = (n) => state.lesson?.stages[n - 1] || '';
 function buildSteps() {
-  STAGES.forEach((name, i) => {
+  els.steps.replaceChildren();
+  els.steps.style.gridTemplateColumns = `repeat(${state.lesson.stages.length}, minmax(0, 1fr))`;
+  state.lesson.stages.forEach((name, i) => {
     const li = document.createElement('li');
     li.dataset.step = String(i + 1);
     const t = document.createElement('span');
@@ -74,7 +91,7 @@ function renderStage(n) {
     li.querySelector('.st').textContent = step === n ? ' (현재 단계)' : step < n ? ' (끝남)' : '';
     if (step === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
   });
-  els.caption.textContent = n ? `${n}단계 · ${STAGES[n - 1]}` : '';
+  els.caption.textContent = n ? `${n}단계 · ${stageName(n)}` : '';
 }
 function commitStage(n) {
   state.stage = n;
@@ -128,10 +145,15 @@ function renderRich(container, text) {
   });
 }
 
-/** 챗봇 글 맨 앞의 [단계 n/6 · 이름] 줄을 떼어 낸다. 스트리밍 중 잘린 머리글은 숨긴다. */
+/** 챗봇 글 맨 앞의 [단계 n/전체 · 이름] 줄을 떼어 낸다. 스트리밍 중 잘린 머리글은 숨긴다. */
 function splitHeader(text) {
   const m = HEADER_RE.exec(text);
-  if (m) return { stage: Number(m[1]), body: text.slice(m[0].length), pending: false };
+  if (m) {
+    const n = Number(m[1]);
+    const total = state.lesson.stages.length;
+    const ok = Number(m[2]) === total && n >= 1 && n <= total;
+    return { stage: ok ? n : null, body: text.slice(m[0].length), pending: false };
+  }
   const t = text.trimStart();
   if (t.startsWith('[') && !t.includes('\n') && !t.includes(']') && t.length < 40) return { stage: null, body: '', pending: true };
   return { stage: null, body: text, pending: false };
@@ -164,7 +186,7 @@ function setStageChip(wrap, stage) {
     chip.className = 'stage-chip';
     wrap.prepend(chip);
   }
-  chip.textContent = `${stage}단계 · ${STAGES[stage - 1]}`;
+  chip.textContent = `${stage}단계 · ${stageName(stage)}`;
 }
 function addNotice(text, { error = false } = {}) {
   const box = document.createElement('div');
@@ -181,8 +203,22 @@ function clearNotices() {
   els.log.querySelectorAll('.notice-line').forEach((n) => n.remove());
 }
 
-function isCard(text) { return text.includes('정리 카드') && text.includes('선택한 기술'); }
-/** 챗봇 글에서 정리 카드(제목 줄 + 항목 줄들)만 잘라 낸다. */
+/** JSON을 보내고 { ok, data } 또는 { ok: false, code, message }를 돌려준다. */
+async function postJson(url, body) {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    let data = {};
+    try { data = await res.json(); } catch { /* 본문 없음 */ }
+    if (res.ok) return { ok: true, data };
+    return { ok: false, code: data.error || '', message: data.message || '문제가 생겼어요. 잠시 뒤에 다시 시도해 주세요.' };
+  } catch {
+    return { ok: false, code: 'network', message: '인터넷 연결을 확인해 주세요.' };
+  }
+}
+
+/* ---------- 1차시 정리 카드 ---------- */
+const isCard = (text) => !!state.lesson?.makesCard && text.includes('정리 카드') && text.includes('선택한 기술');
+/** 챗봇 글에서 정리 카드(제목 줄 + 항목 줄들)만 잘라 낸다. 서버도 같은 결과가 대화 안에 있는지로 카드를 확인한다. */
 function extractCard(text) {
   const lines = text.split('\n');
   let start = lines.findIndex((l) => /^\s*(\*\*)?\s*정리 카드\s*(\*\*)?\s*:?\s*$/.test(l));
@@ -227,7 +263,65 @@ function addCardTools(wrap, text) {
   });
   tools.append(b, status);
   wrap.append(tools);
+  if (state.cfg.cardStorage) wrap.append(cardSaveRow(text));
 }
+/** 정리 카드를 학번으로 저장하는 줄(2차시에서 학번으로 불러온다). */
+function cardSaveRow(text) {
+  const box = document.createElement('div');
+  box.className = 'card-save';
+  const row = document.createElement('div');
+  row.className = 'row';
+  const input = document.createElement('input');
+  Object.assign(input, { type: 'text', inputMode: 'numeric', maxLength: 5, autocomplete: 'off', placeholder: '학번 5자리', className: 'sid', value: state.studentId });
+  input.setAttribute('aria-label', '학번 5자리');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'secondary';
+  btn.textContent = '학번으로 저장';
+  const status = document.createElement('p');
+  status.className = 'hint';
+  status.setAttribute('aria-live', 'polite');
+  btn.addEventListener('click', async () => {
+    const sid = input.value.trim();
+    if (!SID_RE.test(sid)) { status.textContent = '학번은 숫자 5자리로 입력해 주세요. (예: 20101)'; input.focus(); return; }
+    btn.disabled = true;
+    status.textContent = '저장하는 중이에요…';
+    const r = await postJson('/api/cards/save', { accessCode: els.code.value.trim(), studentId: sid, state: state.token, card: extractCard(text) });
+    btn.disabled = false;
+    if (r.ok) {
+      state.studentId = sid;
+      save();
+      status.textContent = `저장했어요. 2차시에서 학번 ${sid}로 불러올 수 있어요. 복사해서 따로 보관해 두면 더 안전해요.`;
+    } else {
+      status.textContent = r.message;
+    }
+  });
+  row.append(input, btn);
+  box.append(row, status);
+  return box;
+}
+function formatTime(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+els.loadCard.addEventListener('click', async () => {
+  const sid = els.loadSid.value.trim();
+  if (!SID_RE.test(sid)) { els.cardStatus.textContent = '학번은 숫자 5자리로 입력해 주세요. (예: 20101)'; els.loadSid.focus(); return; }
+  if (!validateFields()) return;
+  els.loadCard.disabled = true;
+  els.cardStatus.textContent = '불러오는 중이에요…';
+  const r = await postJson('/api/cards/load', { accessCode: els.code.value.trim(), studentId: sid });
+  els.loadCard.disabled = false;
+  if (r.ok) {
+    els.cardText.value = r.data.card;
+    state.studentId = sid;
+    const when = formatTime(r.data.savedAt);
+    els.cardStatus.textContent = `${when ? `${when}에 ` : ''}저장한 카드를 불러왔어요. 내 카드가 맞는지 확인해 주세요.`;
+  } else {
+    els.cardStatus.textContent = r.message;
+  }
+});
 
 let stick = true;
 els.main.addEventListener('scroll', () => {
@@ -239,7 +333,7 @@ function scrollDown(force = false) {
 
 function showIntro() {
   if (els.intro) return;
-  els.main.prepend(introNode);
+  els.main.insertBefore(introNode, els.log);
   els.intro = introNode;
 }
 function hideIntro() {
@@ -283,13 +377,14 @@ async function readSse(response, onEvent) {
   }
 }
 
-async function send(text, { fromStart = false } = {}) {
+async function send(text, { fromStart = false, card = '' } = {}) {
   if (state.busy) return;
   clearNotices();
   hideIntro();
 
+  const shown = card ? `${text}\n\n${CARD_NOTE}` : text; // 화면과 저장에는 카드 대신 안내만 남긴다
   const studentMsg = addMessage('student');
-  studentMsg.bubble.textContent = text;
+  studentMsg.bubble.textContent = shown;
   const tutor = addMessage('tutor');
   showDots(tutor.bubble);
   stick = true;
@@ -320,7 +415,10 @@ async function send(text, { fromStart = false } = {}) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, state: state.token, accessCode: els.code.value.trim(), label: els.label.value.trim() }),
+      body: JSON.stringify({
+        message: text, lesson: state.lesson.id, card: card || undefined, state: state.token,
+        accessCode: els.code.value.trim(), label: els.label.value.trim(),
+      }),
     });
 
     if (!res.ok) {
@@ -352,7 +450,7 @@ async function send(text, { fromStart = false } = {}) {
         const { body } = splitHeader(buffer);
         if (data.stage) { commitStage(data.stage); setStageChip(tutor.wrap, data.stage); }
         renderRich(tutor.bubble, body);
-        state.transcript.push({ role: 'student', text }, { role: 'tutor', text: buffer });
+        state.transcript.push({ role: 'student', text: shown }, { role: 'tutor', text: buffer });
         state.pending = null;
         if (isCard(body)) addCardTools(tutor.wrap, body.trim());
         save();
@@ -393,7 +491,7 @@ els.input.addEventListener('keydown', (e) => {
 els.form.addEventListener('submit', (e) => {
   e.preventDefault();
   const text = els.input.value.trim();
-  if (!text || state.busy) return;
+  if (!text || state.busy || !state.lesson) return;
   if ([...text].length > state.cfg.maxChars) {
     clearNotices();
     addNotice(`메시지는 ${state.cfg.maxChars}자까지 보낼 수 있어요.`, { error: true });
@@ -402,7 +500,8 @@ els.form.addEventListener('submit', (e) => {
   if (!validateFields()) return;
   els.input.value = '';
   autosize();
-  send(text);
+  // 대화를 시작하기 전에 첫 메시지를 직접 쓰면, 붙여 넣은 정리 카드도 함께 보낸다.
+  send(text, { card: !state.token && state.lesson.usesCard ? els.cardText.value.trim() : '' });
 });
 
 function validateFields() {
@@ -418,10 +517,16 @@ function validateFields() {
 
 els.start.addEventListener('click', () => {
   if (!validateFields()) return;
-  send(START_TEXT, { fromStart: true });
+  const card = state.lesson.usesCard ? els.cardText.value.trim() : '';
+  if ([...card].length > state.cfg.maxCardChars) {
+    clearNotices();
+    addNotice(`정리 카드는 ${state.cfg.maxCardChars}자까지 보낼 수 있어요.`, { error: true });
+    return;
+  }
+  send(START_TEXT, { fromStart: true, card });
 });
 
-/* ---------- 처음부터 다시(두 번 눌러야 지워진다) ---------- */
+/* ---------- 처음부터 다시(두 번 눌러야 지워진다)와 차시 고르기 ---------- */
 let resetTimer = null;
 els.reset.addEventListener('click', () => {
   if (state.busy) return;
@@ -439,43 +544,73 @@ function resetButton() {
   els.reset.classList.remove('confirm');
   els.reset.textContent = '처음부터 다시';
 }
+// 다른 차시로 가도 이 차시의 대화는 지워지지 않는다(다시 고르면 이어진다).
+els.toPicker.addEventListener('click', () => {
+  if (state.busy) return;
+  setCurrent(null);
+  location.reload();
+});
 
-/* ---------- 시작 ---------- */
-async function loadConfig() {
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await fetch('/api/config');
-      if (res.ok) { state.cfg = await res.json(); state.cfgOk = true; return; }
-      if (res.status === 503) {
-        // 서버 설정 오류는 다시 시도해도 같으므로 서버가 준 안내를 바로 보여 준다.
-        try { state.cfgError = (await res.json()).message || ''; } catch { /* 본문 없음 */ }
-        break;
-      }
-    } catch { /* 다시 시도 */ }
-    await new Promise((r) => setTimeout(r, 500 * (i + 1)));
-  }
-  state.cfgOk = false;
+/* ---------- 차시 고르기 ---------- */
+function renderPicker() {
+  els.lessonList.replaceChildren();
+  state.cfg.lessons.forEach((lesson) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'lesson-card';
+    b.disabled = !lesson.available;
+    const t = document.createElement('span');
+    t.className = 'lt';
+    t.textContent = `${lesson.id}차시 · ${lesson.title}`;
+    const s = document.createElement('span');
+    s.className = 'ls';
+    s.textContent = lesson.subtitle;
+    b.append(t, s);
+    b.addEventListener('click', () => enterLesson(lesson));
+    els.lessonList.append(b);
+  });
+  hideIntro();
+  els.picker.hidden = false;
+  els.lessonList.querySelector('button:not(:disabled)')?.focus();
 }
 
-async function init() {
+function enterLesson(lesson) {
+  state.lesson = lesson;
+  setCurrent(lesson.id);
+  els.picker.hidden = true;
+  els.title.textContent = lesson.title;
+  els.subtitle.textContent = `${lesson.id}차시 · ${lesson.subtitle}`;
+  document.title = `${lesson.id}차시 · ${lesson.title}`;
+  els.toPicker.hidden = false;
+  els.reset.hidden = false;
+  els.steps.hidden = false;
+  els.form.hidden = false;
   buildSteps();
-  await loadConfig();
-  if (!state.cfgOk) {
-    els.start.disabled = true;
-    els.send.disabled = true;
-    addNotice(state.cfgError || '설정을 불러오지 못했어요. 화면을 새로고침해 주세요.', { error: true });
-    return;
-  }
 
+  els.rules.replaceChildren(...lesson.intro.map((line) => { const li = document.createElement('li'); inline(li, line); return li; }));
   els.codeField.hidden = !state.cfg.requiresAccessCode;
   els.labelField.hidden = !state.cfg.logging;
   els.logNotice.hidden = !state.cfg.logging;
-  els.input.maxLength = state.cfg.maxChars + 200; // 초과는 카운터와 서버가 막는다
+  els.cardIn.hidden = !lesson.usesCard;
+  els.cardLoad.hidden = !state.cfg.cardStorage;
+  els.cardInHint.textContent = state.cfg.cardStorage
+    ? '1차시에 학번으로 저장했다면 불러오고, 아니면 복사해 둔 카드를 붙여 넣어요. 없으면 비워 두고 시작해도 돼요.'
+    : '복사해 둔 1차시 정리 카드를 붙여 넣어요. 없으면 비워 두고 시작해도 돼요.';
+  introNode.hidden = false;
+  showIntro();
+  restore();
+}
 
-  const saved = load();
-  if (saved && Array.isArray(saved.transcript) && saved.transcript.length > 0) {
+/** 이 차시에서 저장해 둔 대화를 다시 그린다. */
+function restore() {
+  const saved = readKey(storeKey(state.lesson.id));
+  if (saved) {
     els.code.value = saved.code || '';
     els.label.value = saved.label || '';
+    state.studentId = saved.studentId || '';
+    els.loadSid.value = state.studentId;
+  }
+  if (saved && Array.isArray(saved.transcript) && saved.transcript.length > 0) {
     state.token = saved.token || null;
     state.transcript = saved.transcript;
     hideIntro();
@@ -500,10 +635,48 @@ async function init() {
     els.input.focus({ preventScroll: true });
   } else if (saved && saved.pending) {
     // 첫 응답을 기다리는 중에 새로고침한 경우
-    els.code.value = saved.code || '';
-    els.label.value = saved.label || '';
     els.input.value = saved.pending;
     autosize();
   }
+}
+
+/* ---------- 시작 ---------- */
+async function loadConfig() {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) { state.cfg = await res.json(); state.cfgOk = true; return; }
+      if (res.status === 503) {
+        // 서버 설정 오류는 다시 시도해도 같으므로 서버가 준 안내를 바로 보여 준다.
+        try { state.cfgError = (await res.json()).message || ''; } catch { /* 본문 없음 */ }
+        break;
+      }
+    } catch { /* 다시 시도 */ }
+    await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+  }
+  state.cfgOk = false;
+}
+
+async function init() {
+  hideIntro();
+  await loadConfig();
+  if (!state.cfgOk) {
+    addNotice(state.cfgError || '설정을 불러오지 못했어요. 화면을 새로고침해 주세요.', { error: true });
+    return;
+  }
+  els.input.maxLength = state.cfg.maxChars + 200; // 초과는 카운터와 서버가 막는다
+
+  const available = state.cfg.lessons.filter((l) => l.available);
+  let raw = null;
+  try { raw = sessionStorage.getItem(CURRENT_KEY); } catch { /* 무시 */ }
+  let currentId = Number(raw) || 0;
+  if (raw === null) {
+    // 차시를 나누기 전부터 열려 있던 1차시 대화가 있으면 그대로 이어 간다(차시 표시가 아예 없는 탭만).
+    const old = readKey(storeKey(1));
+    if (old && ((Array.isArray(old.transcript) && old.transcript.length > 0) || old.pending)) currentId = 1;
+  }
+  const current = available.find((l) => l.id === currentId);
+  if (current) enterLesson(current);
+  else renderPicker();
 }
 init();
