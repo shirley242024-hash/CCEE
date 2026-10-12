@@ -4,6 +4,7 @@ import { parseStage, buildRequest } from '../server/chat.js';
 import { loadConfig } from '../server/config.js';
 import { DailyCap, InFlight, SlidingWindowLimiter } from '../server/limits.js';
 import { detectRisk } from '../server/safety.js';
+import { createHmac } from 'node:crypto';
 import { signState, verifyState, StateError } from '../server/state.js';
 
 const SECRET = 'k'.repeat(40);
@@ -16,6 +17,16 @@ describe('상태 토큰', () => {
     const out = verifyState(signState(p, SECRET), SECRET, opts);
     assert.deepEqual(out.messages, p.messages);
   });
+  it('압축해서 서명하고, 압축하기 전 형식(진행 중인 대화)도 읽는다', () => {
+    const token = signState(good(), SECRET);
+    assert.match(token, /^z\.[\w-]+\.[\w-]+$/);
+    const body = Buffer.from(JSON.stringify(good()), 'utf8').toString('base64url');
+    const legacy = `${body}.${createHmac('sha256', SECRET).update(body).digest('base64url')}`;
+    assert.equal(verifyState(legacy, SECRET, opts).messages[1].content[0].text, '네');
+    // 같은 본문이라도 형식을 바꿔 붙이면 서명이 맞지 않는다
+    assert.throws(() => verifyState(`z.${body}.${legacy.split('.')[1]}`, SECRET, opts), StateError);
+  });
+
   it('다른 비밀키로는 읽히지 않는다', () => {
     assert.throws(() => verifyState(signState(good(), SECRET), 'z'.repeat(40), opts), StateError);
   });
@@ -76,6 +87,12 @@ describe('단계 읽기와 요청 만들기', () => {
     assert.equal(parseStage('머리글 없음'), null);
     assert.equal(parseStage('[단계 7/6 · 이상한]'), null);
   });
+  it('대화 부분도 캐시하도록 요청 맨 위에 캐시 표시를 붙인다', () => {
+    const req = buildRequest({ config: { model: 'm', maxTokens: 10, effort: 'medium' }, systemPrompt: 'sys', messages: [] });
+    assert.deepEqual(req.cache_control, { type: 'ephemeral' });
+    assert.deepEqual(req.system[0].cache_control, { type: 'ephemeral' });
+  });
+
   it('effort=none이면 output_config를 보내지 않는다', () => {
     const cfg = loadConfig({ SESSION_SECRET: SECRET, CHATBOT_EFFORT: 'none' });
     const req = buildRequest({ config: cfg, systemPrompt: 'sys', messages: [] });

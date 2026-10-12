@@ -16,6 +16,7 @@
         <p id="subtitle">AI와 논쟁하며 탄소 저감 과학기술 제안하기</p>
       </div>
       <div class="top-actions">
+        <button id="download" class="ghost" type="button" hidden>대화 내려받기</button>
         <button id="to-picker" class="ghost" type="button" hidden>차시 고르기</button>
         <button id="reset" class="ghost" type="button" hidden>처음부터 다시</button>
       </div>
@@ -34,7 +35,7 @@
       <section id="intro" class="intro" aria-labelledby="intro-title" hidden>
         <h2 id="intro-title">시작하기 전에</h2>
         <ul id="rules" class="rules"></ul>
-        <p id="log-notice" class="notice" hidden>대화 내용은 수업을 돕기 위해 선생님이 볼 수 있어요. 이름이나 연락처 같은 개인 정보는 쓰지 마세요.</p>
+        <p id="log-notice" class="notice" hidden>대화 내용은 아래 학번·이름과 함께 저장되어 선생님이 볼 수 있어요. 연락처나 주소 같은 다른 개인 정보는 쓰지 마세요.</p>
 
         <div class="fields">
           <div id="code-field" class="field" hidden>
@@ -42,10 +43,12 @@
             <input id="code" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64">
             <p class="hint">선생님이 알려 준 코드를 입력해요.</p>
           </div>
-          <div id="label-field" class="field" hidden>
-            <label for="label">별명 또는 번호 <span class="opt">(선택)</span></label>
-            <input id="label" type="text" autocomplete="off" maxlength="30">
-            <p class="hint">별명이나 번호만 써요. 실명이나 연락처는 쓰지 마세요.</p>
+          <div id="id-field" class="field" hidden>
+            <label for="sid">학번</label>
+            <input id="sid" class="sid" type="text" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="예: 20101">
+            <label for="name">이름</label>
+            <input id="name" type="text" autocomplete="off" maxlength="20">
+            <p class="hint">대화 기록을 선생님이 확인할 수 있도록 학번 5자리와 이름을 써요.</p>
           </div>
         </div>
 

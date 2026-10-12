@@ -1,5 +1,5 @@
 -- Supabase 대시보드의 SQL Editor에 이 파일 전체를 붙여 넣어 실행하세요. 여러 번 실행해도 안전합니다.
--- 1) chat_logs     : 대화 기록(LOG_CHATS=true일 때). 서버는 공개용(publishable) 키로 '쓰기만' 합니다.
+-- 1) chat_logs     : 대화 기록(LOG_CHATS=true일 때). 서버는 비밀(secret) 키로 씁니다(비밀 키가 없으면 공개용 키로 '쓰기만').
 -- 2) lesson1_cards : 학번으로 저장한 1차시 정리 카드(SAVE_CARDS=true일 때). 서버의 비밀(secret) 키로만 읽고 씁니다.
 -- 읽기는 대시보드(교사 계정)에서 합니다.
 
@@ -18,6 +18,10 @@ create table if not exists public.chat_logs (
 
 -- 차시를 나누기 전에 만든 테이블에도 차시 열을 더한다.
 alter table public.chat_logs add column if not exists lesson smallint check (lesson between 1 and 3);
+-- 대화를 시작할 때 학생이 입력한 학번(숫자 5자리)과 이름. 대화 기록을 켰을 때만 저장된다.
+alter table public.chat_logs add column if not exists student_id text check (student_id ~ '^[0-9]{5}$');
+alter table public.chat_logs add column if not exists student_name text check (char_length(student_name) <= 20);
+create index if not exists chat_logs_student_idx on public.chat_logs (student_id, created_at);
 
 create index if not exists chat_logs_session_idx on public.chat_logs (session_id, created_at);
 create index if not exists chat_logs_flagged_idx on public.chat_logs (created_at) where flagged;
@@ -28,6 +32,8 @@ alter table public.chat_logs enable row level security;
 -- 나중에 정책 하나가 실수로 추가되어도 공개 키로 기록을 읽거나 지울 수 없게 합니다.
 revoke all on public.chat_logs from anon, authenticated;
 grant insert on public.chat_logs to anon;
+-- 서버가 비밀(secret) 키로 기록할 때 쓰는 역할. 기본 권한에 기대지 않도록 직접 준다.
+grant select, insert on public.chat_logs to service_role;
 -- identity 열(id)에 쓰려면 시퀀스 권한도 필요합니다.
 grant usage on all sequences in schema public to anon;
 
@@ -63,8 +69,16 @@ grant select, insert on public.lesson1_cards to service_role;
 -- 교사가 SQL Editor에서 쓸 수 있는 조회 예시
 --
 -- 위기 신호가 감지된 대화를 먼저 보기:
---   select created_at, session_id, label, content
+--   select created_at, student_id, student_name, lesson, content
 --   from public.chat_logs where flagged order by created_at desc;
+--
+-- 한 학생의 대화를 차시별로 처음부터 읽기:
+--   select created_at, lesson, role, stage, content
+--   from public.chat_logs where student_id = '20101' order by lesson, id;
+--
+-- 학생별로 차시마다 몇 번 주고받았는지 보기:
+--   select student_id, student_name, lesson, count(*) filter (where role = 'student') as messages
+--   from public.chat_logs group by 1, 2, 3 order by 1, 3;
 --
 -- 한 대화를 처음부터 읽기(위 결과의 session_id를 넣으세요):
 --   select created_at, role, stage, content

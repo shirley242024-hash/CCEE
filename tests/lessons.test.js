@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { createCardStore } from '../server/cards.js';
 import { parseStage } from '../server/chat.js';
 import { loadConfig } from '../server/config.js';
+import { createLogger } from '../server/logger.js';
 import { signState } from '../server/state.js';
 import { memoryCardStore, SECRET, startHarness } from './helpers.js';
 
@@ -84,10 +85,77 @@ describe('차시 나누기', () => {
     } finally { await h.close(); }
   });
 
+  it('이어 하는 새 대화: 첫 메시지에 지난 대화 정리를 붙이고(카드가 있으면 카드 다음), 다음 턴부터는 붙이지 않는다', async () => {
+    const h = await startHarness();
+    try {
+      const resume = '지금 단계: [단계 4/6 · 반론 제시]\n학생이 쓴 글(오래된 것부터):\n[학생 1] 태양광은 좋다';
+      const r = await h.chat({ message: '이어서 할게요.', lesson: 2, card: MOCK_CARD, resume });
+      assert.equal(r.status, 200);
+      assert.equal(h.mock.requests.at(-1).body.messages[0].content,
+        `[1차시 정리 카드]\n${MOCK_CARD}\n\n[이전 대화 이어 하기]\n${resume}\n\n이어서 할게요.`);
+      await h.chat({ message: '다음', lesson: 2, resume, state: h.doneOf(r).state });
+      assert.equal(h.mock.requests.at(-1).body.messages.at(-1).content, '다음');
+
+      const one = await h.chat({ message: '이어서 할게요.', lesson: 1, resume });
+      assert.equal(h.mock.requests.at(-1).body.messages[0].content, `[이전 대화 이어 하기]\n${resume}\n\n이어서 할게요.`);
+      assert.equal(one.status, 200);
+
+      const long = await h.chat({ message: '이어서', resume: '가'.repeat(20001) });
+      assert.equal(long.status, 400);
+      assert.equal(long.json.error, 'too_long_resume');
+    } finally { await h.close(); }
+  });
+
+  it('두 차시 프롬프트 모두 이어 하기를 다루고, 끝난 대화는 이어 하기를 안내한다', async () => {
+    const h = await startHarness({ SESSION_MAX_AGE_HOURS: '1' });
+    try {
+      for (const [, lesson] of h.lessons) assert.ok(lesson.prompt.text.includes('[이전 대화 이어 하기]'), `${lesson.id}차시`);
+      const old = signState({ v: 1, sid: 'expired-0001', l: 1, pv: h.systemPrompt.version, m: h.config.model, iat: Date.now() - 2 * 3600_000,
+        messages: [{ role: 'user', content: '안녕' }, { role: 'assistant', content: [{ type: 'text', text: '[단계 1/6 · 기술 고르기]\n안녕하세요' }] }] }, SECRET);
+      const expired = await h.chat({ message: '다시', state: old });
+      assert.equal(expired.status, 400);
+      assert.match(expired.json.message, /만료됐어요\. "이어서 새 대화 시작"/);
+    } finally { await h.close(); }
+  });
+
   it('단계 머리글은 그 차시의 전체 단계 수와 맞을 때만 읽는다', () => {
     assert.deepEqual(parseStage('[단계 2/6 · 근거 확인]\n본문', 6), { stage: 2, name: '근거 확인' });
     assert.equal(parseStage('[단계 2/5 · 근거 확인]', 6), null);
     assert.equal(parseStage('[단계 0/6 · 없음]', 6), null);
+  });
+});
+
+describe('대화 기록과 학번·이름', () => {
+  const LOG_ENV = { LOG_CHATS: 'true', SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SECRET_KEY: 'sb_secret_test' };
+
+  it('기록을 켜면 학번·이름이 있어야 대화할 수 있고, 기록마다 함께 남는다', async () => {
+    const h = await startHarness(LOG_ENV);
+    try {
+      const cfg = await (await fetch(`${h.base}/api/config`)).json();
+      assert.equal(cfg.askIdentity, true);
+      for (const who of [{}, { studentId: '20101' }, { studentId: '2010', studentName: '홍길동' }, { studentId: '20101', studentName: '가'.repeat(21) }, { studentId: '20101', studentName: '   ' }]) {
+        const r = await h.chat({ message: '안녕', ...who });
+        assert.equal(r.status, 400, JSON.stringify(who));
+        assert.equal(r.json.error, 'need_identity');
+      }
+      assert.equal(h.mock.requests.length, 0, '학번·이름이 없으면 Anthropic을 부르지 않는다');
+
+      const ok = await h.chat({ message: '안녕', lesson: 2, studentId: ' 20101 ', studentName: ' 홍길동 ' });
+      assert.equal(ok.status, 200);
+      const entry = h.logs.at(-1);
+      assert.deepEqual([entry.studentId, entry.studentName, entry.lesson], ['20101', '홍길동', 2]);
+    } finally { await h.close(); }
+  });
+
+  it('기록 설정: 비밀 키가 있으면 공개용 키 없이도 켜지고, 기록 줄에 학번·이름 열이 들어간다', async () => {
+    assert.deepEqual(loadConfig({ SESSION_SECRET: SECRET, ...LOG_ENV }).errors, []);
+    const noKey = loadConfig({ SESSION_SECRET: SECRET, LOG_CHATS: 'true', SUPABASE_URL: 'https://x.supabase.co' });
+    assert.ok(noKey.errors.some((e) => e.includes('SUPABASE_SECRET_KEY')));
+
+    const rows = [];
+    const logger = createLogger({ logChats: true }, { client: { from: () => ({ insert: async (r) => { rows.push(...r); return { error: null }; } }) } });
+    await logger.log({ sessionId: 's', lesson: 1, studentId: '20101', studentName: '홍길동', stage: 2, flagged: false, model: 'm', promptVersion: 'v', student: '학생 글', tutor: '챗봇 글' });
+    assert.deepEqual(rows.map((r) => [r.role, r.student_id, r.student_name, r.lesson]), [['student', '20101', '홍길동', 1], ['tutor', '20101', '홍길동', 1]]);
   });
 });
 

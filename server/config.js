@@ -50,8 +50,8 @@ export function loadConfig(env = process.env) {
   }
 
   const logChats = env.LOG_CHATS === 'true';
-  if (logChats && (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY)) {
-    errors.push('LOG_CHATS=true이면 SUPABASE_URL과 SUPABASE_PUBLISHABLE_KEY가 필요해요.');
+  if (logChats && (!env.SUPABASE_URL || !(env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY))) {
+    errors.push('LOG_CHATS=true이면 SUPABASE_URL과 SUPABASE_SECRET_KEY(또는 SUPABASE_PUBLISHABLE_KEY)가 필요해요.');
   }
   const saveCards = env.SAVE_CARDS === 'true';
   if (saveCards && (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY)) {
@@ -74,8 +74,8 @@ export function loadConfig(env = process.env) {
     accessCode: env.ACCESS_CODE || '',
 
     maxStudentChars: int(env.MAX_STUDENT_CHARS, 1000),
-    maxTurns: int(env.MAX_TURNS, 40),
-    maxStateChars: int(env.MAX_STATE_CHARS, 240_000),
+    maxTurns: int(env.MAX_TURNS, 80),
+    maxStateChars: int(env.MAX_STATE_CHARS, 1_500_000),
     perSessionPerMinute: int(env.RATE_PER_SESSION_PER_MIN, 8),
     perIpPerMinute: int(env.RATE_PER_IP_PER_MIN, 240),
     newConversationsPerIpPerMinute: int(env.NEW_CONVERSATIONS_PER_IP_PER_MIN, 60),
