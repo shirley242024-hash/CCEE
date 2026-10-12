@@ -21,6 +21,14 @@ export function buildRequest({ config, systemPrompt, messages }) {
   return request;
 }
 
+/** 이어 하는 대화의 첫 메시지에 붙는 지난 대화 정리의 최대 글자 수(화면은 이보다 짧게 만든다). */
+export const MAX_RESUME_CHARS = 20000;
+
+/** 이어 하는 대화의 첫 메시지: 화면이 정리한 지난 대화를 학생 글 앞에 붙인다. */
+export function withResume(resume, message) {
+  return resume ? `[이전 대화 이어 하기]\n${resume}\n\n${message}` : message;
+}
+
 /** 카드를 쓰는 차시의 첫 메시지: 1차시 정리 카드를 학생 글 앞에 붙인다. */
 export function withCard(card, message) {
   return card ? `[1차시 정리 카드]\n${card}\n\n${message}` : message;

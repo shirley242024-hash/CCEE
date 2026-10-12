@@ -75,7 +75,7 @@ export function verifyState(token, secret, { maxAgeMs, maxChars }) {
   if (!payload || payload.v !== 1 || typeof payload.sid !== 'string' || typeof payload.iat !== 'number') {
     throw new StateError('대화 정보가 올바르지 않아요.');
   }
-  if (Date.now() - payload.iat > maxAgeMs) throw new StateError('대화가 너무 오래되어 만료됐어요. 처음부터 다시 시작해 주세요.');
+  if (Date.now() - payload.iat > maxAgeMs) throw new StateError('대화가 너무 오래되어 만료됐어요.');
   validateMessages(payload.messages);
   return payload;
 }

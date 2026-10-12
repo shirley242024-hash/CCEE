@@ -226,6 +226,11 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
   align-items: center;
 }
 .notice-line.error { background: var(--err-bg); color: var(--err-ink); }
+.divider {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.8125rem; color: var(--muted); font-weight: 600;
+}
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .notice-line button {
   font: inherit; font-size: 0.875rem; font-weight: 600;
   color: inherit; background: transparent; border: 1px solid currentColor;

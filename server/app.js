@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import express from 'express';
 import { MAX_CARD_CHARS, STUDENT_ID_RE } from './cards.js';
-import { buildRequest, parseStage, textOf, withCard } from './chat.js';
+import { buildRequest, MAX_RESUME_CHARS, parseStage, textOf, withCard, withResume } from './chat.js';
 import { publicLessons } from './lessons.js';
 import { DailyCap, InFlight, SlidingWindowLimiter } from './limits.js';
 import { detectRisk } from './safety.js';
@@ -16,7 +16,7 @@ const MSG = {
   badCode: '수업 코드가 맞지 않아요. 선생님께 다시 확인해 주세요.',
   rateCode: '수업 코드를 너무 많이 틀렸어요. 1분 뒤에 다시 시도해 주세요.',
   empty: '메시지를 입력해 주세요.',
-  tooLongTurns: '대화가 너무 길어져 더 이어갈 수 없어요. 위쪽의 "대화 내려받기"로 지금까지의 대화를 저장한 뒤 선생님께 알려 주세요.',
+  tooLongTurns: '대화가 너무 길어져 이 대화로는 더 이어갈 수 없어요. "이어서 새 대화 시작"을 누르면 지금까지의 내용을 정리해 이어서 할 수 있어요.',
   rateSession: '너무 빠르게 보내고 있어요. 잠시 뒤에 다시 보내 주세요.',
   rateIp: '지금 접속한 학생이 많아요. 잠시 뒤에 다시 보내 주세요.',
   daily: '오늘 사용할 수 있는 횟수를 모두 썼어요. 선생님께 알려 주세요.',
@@ -24,7 +24,8 @@ const MSG = {
   refusal: '이 내용에는 답을 드릴 수 없어요. 다른 방식으로 물어보거나 선생님께 도움을 요청해 주세요.',
   serverConfig: '챗봇 서버 설정에 문제가 있어요. 선생님께 알려 주세요.',
   billing: '챗봇 사용 한도에 도달했어요. 선생님께 알려 주세요.',
-  stale: '수업 내용이 업데이트되어 이 대화를 이어갈 수 없어요. "처음부터 다시"를 눌러 새로 시작해 주세요.',
+  stale: '수업 내용이 업데이트되어 이 대화를 그대로 이어갈 수 없어요.',
+  resumeHint: '"이어서 새 대화 시작"을 누르면 지금까지의 내용을 정리해 이어서 할 수 있어요.',
   truncated: '답변이 너무 길어서 중간에 끊겼어요. 다시 보내 주세요.',
   overloaded: '지금 이용하는 사람이 많아요. 잠시 뒤에 다시 보내 주세요.',
   connection: '연결이 불안정해요. 잠시 뒤에 다시 보내 주세요.',
@@ -33,6 +34,7 @@ const MSG = {
   badLesson: '아직 열리지 않은 차시예요. 차시를 다시 골라 주세요.',
   otherLesson: '다른 차시의 대화 정보예요. "처음부터 다시"를 눌러 새로 시작해 주세요.',
   tooLongCard: `정리 카드는 ${MAX_CARD_CHARS}자까지 보낼 수 있어요.`,
+  tooLongResume: '지난 대화 정리가 너무 길어요. 선생님께 알려 주세요.',
   cardsOff: '학번으로 정리 카드를 저장하는 기능이 꺼져 있어요. 카드를 복사해서 보관해 주세요.',
   rateCards: '요청이 너무 많아요. 잠시 뒤에 다시 시도해 주세요.',
   badStudentId: '학번은 숫자 5자리로 입력해 주세요. (예: 20101)',
@@ -196,7 +198,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
         history = payload.messages;
       } catch (err) {
         const text = err instanceof StateError ? err.message : '대화 정보가 올바르지 않아요.';
-        return fail(res, 400, 'bad_state', text.includes('처음부터 다시') ? text : `${text} "처음부터 다시"를 눌러 새로 시작해 주세요.`);
+        return fail(res, 400, 'bad_state', text.includes('처음부터 다시') ? text : `${text} ${MSG.resumeHint}`);
       }
     } else {
       sid = randomUUID();
@@ -207,6 +209,9 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     // 1차시 정리 카드는 카드를 쓰는 차시의 첫 메시지에만 붙인다.
     const card = !body.state && lesson.usesCard ? cleanText(body.card) : '';
     if ([...card].length > MAX_CARD_CHARS) return fail(res, 400, 'too_long_card', MSG.tooLongCard);
+    // 앞선 대화가 끝난(한도·만료·업데이트) 뒤 이어 하는 대화는 첫 메시지에 지난 대화 정리를 붙인다.
+    const resume = !body.state ? cleanText(body.resume) : '';
+    if ([...resume].length > MAX_RESUME_CHARS) return fail(res, 400, 'too_long_resume', MSG.tooLongResume);
 
     if (history.length / 2 >= config.maxTurns) {
       console.warn(`[chat] 대화 길이 한도(주고받기 ${config.maxTurns}번)에 닿았어요. 차시=${lesson.id} 세션=${sid.slice(0, 8)}`);
@@ -261,7 +266,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
       if (!res.writableFinished) aborter.abort();
     });
 
-    const nextMessages = [...history, { role: 'user', content: withCard(card, message) }];
+    const nextMessages = [...history, { role: 'user', content: withCard(card, withResume(resume, message)) }];
 
     try {
       const request = buildRequest({ config, systemPrompt: lesson.prompt.text, messages: nextMessages });

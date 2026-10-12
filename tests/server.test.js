@@ -246,7 +246,7 @@ describe('수업 코드와 요청 제한', () => {
       const over = await h.chat({ message: '셋', state });
       assert.equal(over.status, 400);
       assert.equal(over.json.error, 'too_long');
-      assert.match(over.json.message, /대화 내려받기/);
+      assert.match(over.json.message, /이어서 새 대화 시작/);
       assert.equal(h.mock.requests.length, 2, '한도를 넘은 요청은 Anthropic을 부르지 않는다');
     } finally { await h.close(); }
   });

@@ -5,6 +5,10 @@ const CURRENT_KEY = 'ccee.current';
 const HEADER_RE = /^\s*\[단계\s*(\d)\s*\/\s*(\d)\s*·\s*([^\]\n]+)\]\s*/;
 const START_TEXT = '안녕하세요! 시작할게요.';
 const CARD_NOTE = '(1차시 정리 카드를 함께 보냈어요)';
+const RESUME_NOTE = '(지난 대화를 정리해 함께 보냈어요)';
+const RESUME_TEXT = '이어서 할게요.';
+const RESUME_DIVIDER = '여기부터 이어서 새 대화';
+const RESUME_MAX = 12000; // 지난 대화 정리의 최대 글자 수(서버 한도보다 작게)
 const SID_RE = /^\d{5}$/;
 
 const $ = (sel) => document.querySelector(sel);
@@ -34,6 +38,7 @@ const state = {
   transcript: [], // { role: 'student' | 'tutor', text }
   pending: null, // 응답을 기다리는 중인 학생 글(새로고침해도 잃지 않도록 저장)
   studentId: '', // 정리 카드를 저장하거나 불러올 때 쓴 학번
+  card: '', // 이 차시 대화를 시작할 때 보낸 1차시 정리 카드(이어 하기에 다시 보낸다)
   leaving: false, // 새로고침·탭 닫기 중(이때의 연결 끊김은 실패로 처리하지 않는다)
 };
 window.addEventListener('pagehide', () => { state.leaving = true; });
@@ -52,7 +57,7 @@ function save() {
   try {
     sessionStorage.setItem(storeKey(state.lesson.id), JSON.stringify({
       token: state.token, stage: state.stage, transcript: state.transcript, pending: state.pending,
-      code: els.code.value, label: els.label.value, studentId: state.studentId,
+      code: els.code.value, label: els.label.value, studentId: state.studentId, card: state.card,
     }));
   } catch { /* 저장 불가: 무시 */ }
 }
@@ -188,13 +193,20 @@ function setStageChip(wrap, stage) {
   }
   chip.textContent = `${stage}단계 · ${stageName(stage)}`;
 }
-function addNotice(text, { error = false } = {}) {
+function addNotice(text, { error = false, actions = [] } = {}) {
   const box = document.createElement('div');
   box.className = `notice-line${error ? ' error' : ''}`;
   box.setAttribute('role', 'alert');
   const span = document.createElement('span');
   span.textContent = text;
   box.append(span);
+  actions.forEach(({ label, onClick }) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    box.append(b);
+  });
   els.log.append(box);
   scrollDown(true);
   return box;
@@ -323,6 +335,54 @@ els.loadCard.addEventListener('click', async () => {
   }
 });
 
+/* ---------- 이어서 새 대화(앞선 대화가 한도·만료·업데이트로 끝났을 때) ---------- */
+function addDivider() {
+  const d = document.createElement('div');
+  d.className = 'divider';
+  d.textContent = RESUME_DIVIDER;
+  els.log.append(d);
+  return d;
+}
+const clip = (t, n) => ([...t].length > n ? `${[...t].slice(0, n).join('')}…` : t);
+/** 지금까지의 대화를 정리한다: 지금 단계, 학생이 쓴 글 전부(길면 가운데를 줄임), 챗봇의 최근 말 3개. */
+function buildResume() {
+  const students = [];
+  const tutors = [];
+  state.transcript.forEach((m) => {
+    if (m.role === 'student') students.push(m.text.replace(CARD_NOTE, '').replace(RESUME_NOTE, '').trim());
+    else if (m.role === 'tutor') tutors.push(splitHeader(m.text).body.replace(/\*\*/g, '').trim());
+  });
+  const total = state.lesson.stages.length;
+  const head = state.stage ? `지금 단계: [단계 ${state.stage}/${total} · ${stageName(state.stage)}]` : '지금 단계: 아직 표시되지 않음';
+  const all = students.map((t, i) => `[학생 ${i + 1}] ${clip(t, 400)}`);
+  const tail = tutors.slice(-3).map((t) => `[챗봇] ${clip(t, 1500)}`);
+  const compose = (lines) => [head, '(앞선 대화가 길어져 학생 화면이 정리한 것입니다. 긴 글은 줄였을 수 있습니다.)', '', '학생이 쓴 글(오래된 것부터):', ...lines, '', '챗봇의 최근 말:', ...tail].join('\n');
+  let text = compose(all);
+  // 너무 길면 처음 글 6개와 최근 글을 남기고 가운데를 줄인다.
+  for (let keep = all.length - 7; [...text].length > RESUME_MAX && keep >= 3; keep -= 1) {
+    text = compose([...all.slice(0, 6), `… (가운데 ${all.length - 6 - keep}개 줄임) …`, ...all.slice(-keep)]);
+  }
+  return clip(text, RESUME_MAX);
+}
+function startResume() {
+  if (state.busy || !state.lesson || state.transcript.length === 0 || !validateFields()) return;
+  state.token = null; // 다음 메시지는 지난 대화 정리와 함께 새 대화로 보낸다
+  const typed = els.input.value.trim();
+  const useTyped = typed && [...typed].length <= state.cfg.maxChars;
+  if (useTyped) { els.input.value = ''; autosize(); }
+  send(useTyped ? typed : RESUME_TEXT, { fromStart: !useTyped, ...firstTurnExtras() });
+}
+/** 새 대화의 첫 메시지에 붙일 것: 1차시 카드(카드를 쓰는 차시), 지난 대화 정리(이어 하는 경우). */
+function firstTurnExtras() {
+  if (state.token) return {};
+  const card = state.lesson.usesCard ? (state.card || els.cardText.value.trim()) : '';
+  return { card, resume: state.transcript.length > 0 ? buildResume() : '' };
+}
+const resumeActions = () => [
+  { label: '이어서 새 대화 시작', onClick: startResume },
+  { label: '대화 내려받기', onClick: downloadTranscript },
+];
+
 /* ---------- 대화 내려받기(학생이 대화를 파일로 보관한다) ---------- */
 function updateDownload() {
   els.download.hidden = !state.lesson || state.transcript.length === 0;
@@ -331,7 +391,9 @@ function downloadTranscript() {
   const now = new Date();
   const lines = [`${state.lesson.id}차시 · ${state.lesson.title}`, `내려받은 때: ${now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, ''];
   state.transcript.forEach((m) => {
-    if (m.role === 'student') {
+    if (m.role === 'divider') {
+      lines.push(`----- ${RESUME_DIVIDER} -----`, '');
+    } else if (m.role === 'student') {
       lines.push('[나]', m.text, '');
     } else {
       const { stage, body } = splitHeader(m.text);
@@ -407,12 +469,14 @@ async function readSse(response, onEvent) {
   }
 }
 
-async function send(text, { fromStart = false, card = '' } = {}) {
+async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
   if (state.busy) return;
   clearNotices();
   hideIntro();
 
-  const shown = card ? `${text}\n\n${CARD_NOTE}` : text; // 화면과 저장에는 카드 대신 안내만 남긴다
+  // 화면과 저장에는 카드나 지난 대화 정리 대신 짧은 안내만 남긴다.
+  const shown = resume ? `${text}\n\n${RESUME_NOTE}` : card ? `${text}\n\n${CARD_NOTE}` : text;
+  const divider = resume ? addDivider() : null;
   const studentMsg = addMessage('student');
   studentMsg.bubble.textContent = shown;
   const tutor = addMessage('tutor');
@@ -428,9 +492,10 @@ async function send(text, { fromStart = false, card = '' } = {}) {
   let focusAfter = null;
 
   /** 실패: 이번 말풍선을 지우고, 단계 표시를 되돌리고, 쓴 글을 입력창에 돌려 놓는다. */
-  const rollback = (message) => {
+  const rollback = (message, code = '') => {
     if (state.leaving) return;
     finished = true;
+    divider?.remove();
     tutor.wrap.remove();
     studentMsg.wrap.remove();
     renderStage(state.stage);
@@ -438,7 +503,9 @@ async function send(text, { fromStart = false, card = '' } = {}) {
     save();
     if (!fromStart && !els.input.value) { els.input.value = text; autosize(); }
     if (state.transcript.length === 0) showIntro();
-    addNotice(!fromStart && els.input.value === text ? `${message} 쓴 글은 입력창에 그대로 있어요.` : message, { error: true });
+    // 이 대화로 더 이어갈 수 없거나(한도·만료·업데이트) 이어 하기가 실패하면 이어서 새 대화를 열 수 있게 한다.
+    const canResume = state.transcript.length > 0 && (resume || code === 'too_long' || code === 'bad_state');
+    addNotice(!fromStart && els.input.value === text ? `${message} 쓴 글은 입력창에 그대로 있어요.` : message, { error: true, actions: canResume ? resumeActions() : [] });
   };
 
   try {
@@ -446,7 +513,7 @@ async function send(text, { fromStart = false, card = '' } = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: text, lesson: state.lesson.id, card: card || undefined, state: state.token,
+        message: text, lesson: state.lesson.id, card: card || undefined, resume: resume || undefined, state: state.token,
         accessCode: els.code.value.trim(), label: els.label.value.trim(),
       }),
     });
@@ -462,7 +529,7 @@ async function send(text, { fromStart = false, card = '' } = {}) {
         showIntro();
         focusAfter = els.code;
       }
-      rollback(msg);
+      rollback(msg, code);
       return;
     }
 
@@ -480,6 +547,8 @@ async function send(text, { fromStart = false, card = '' } = {}) {
         const { body } = splitHeader(buffer);
         if (data.stage) { commitStage(data.stage); setStageChip(tutor.wrap, data.stage); }
         renderRich(tutor.bubble, body);
+        if (resume) state.transcript.push({ role: 'divider', text: RESUME_DIVIDER });
+        if (card) state.card = card;
         state.transcript.push({ role: 'student', text: shown }, { role: 'tutor', text: buffer });
         state.pending = null;
         if (isCard(body)) addCardTools(tutor.wrap, body.trim());
@@ -488,13 +557,14 @@ async function send(text, { fromStart = false, card = '' } = {}) {
         if (data.nearLimit) {
           const left = Number(data.turnsLeft);
           addNotice(left <= 0
-            ? '이번이 이 대화의 마지막 답이에요. 위쪽 "대화 내려받기"로 지금까지의 대화를 저장해 두세요.'
+            ? '이번이 이 대화의 마지막 답이에요. "이어서 새 대화 시작"을 누르면 지금까지의 내용을 정리해 이어서 할 수 있어요.'
             : left <= 5
               ? `대화가 길어지고 있어요. ${left}번 더 보낼 수 있어요. 위쪽 "대화 내려받기"로 대화를 저장해 두세요.`
-              : '대화가 길어지고 있어요. 곧 더 이어갈 수 없게 되니, 위쪽 "대화 내려받기"로 대화를 저장해 두세요.');
+              : '대화가 길어지고 있어요. 곧 이 대화로는 더 이어갈 수 없게 되니, 위쪽 "대화 내려받기"로 대화를 저장해 두세요.',
+          { actions: left <= 0 ? resumeActions() : [] });
         }
       } else if (event === 'refusal' || event === 'error') {
-        rollback(data.message || '답변을 만들지 못했어요.');
+        rollback(data.message || '답변을 만들지 못했어요.', data.code);
       }
     });
 
@@ -539,8 +609,8 @@ els.form.addEventListener('submit', (e) => {
   if (!validateFields()) return;
   els.input.value = '';
   autosize();
-  // 대화를 시작하기 전에 첫 메시지를 직접 쓰면, 붙여 넣은 정리 카드도 함께 보낸다.
-  send(text, { card: !state.token && state.lesson.usesCard ? els.cardText.value.trim() : '' });
+  // 새 대화의 첫 메시지라면 정리 카드와(카드를 쓰는 차시) 지난 대화 정리(이어 하는 경우)를 함께 보낸다.
+  send(text, firstTurnExtras());
 });
 
 function validateFields() {
@@ -648,6 +718,7 @@ function restore() {
     els.code.value = saved.code || '';
     els.label.value = saved.label || '';
     state.studentId = saved.studentId || '';
+    state.card = saved.card || '';
     els.loadSid.value = state.studentId;
   }
   if (saved && Array.isArray(saved.transcript) && saved.transcript.length > 0) {
@@ -655,7 +726,9 @@ function restore() {
     state.transcript = saved.transcript;
     hideIntro();
     state.transcript.forEach((m) => {
-      if (m.role === 'student') {
+      if (m.role === 'divider') {
+        addDivider();
+      } else if (m.role === 'student') {
         addMessage('student').bubble.textContent = m.text;
       } else {
         const { stage, body } = splitHeader(m.text);

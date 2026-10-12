@@ -84,6 +84,39 @@ describe('차시 나누기', () => {
     } finally { await h.close(); }
   });
 
+  it('이어 하는 새 대화: 첫 메시지에 지난 대화 정리를 붙이고(카드가 있으면 카드 다음), 다음 턴부터는 붙이지 않는다', async () => {
+    const h = await startHarness();
+    try {
+      const resume = '지금 단계: [단계 4/6 · 반론 제시]\n학생이 쓴 글(오래된 것부터):\n[학생 1] 태양광은 좋다';
+      const r = await h.chat({ message: '이어서 할게요.', lesson: 2, card: MOCK_CARD, resume });
+      assert.equal(r.status, 200);
+      assert.equal(h.mock.requests.at(-1).body.messages[0].content,
+        `[1차시 정리 카드]\n${MOCK_CARD}\n\n[이전 대화 이어 하기]\n${resume}\n\n이어서 할게요.`);
+      await h.chat({ message: '다음', lesson: 2, resume, state: h.doneOf(r).state });
+      assert.equal(h.mock.requests.at(-1).body.messages.at(-1).content, '다음');
+
+      const one = await h.chat({ message: '이어서 할게요.', lesson: 1, resume });
+      assert.equal(h.mock.requests.at(-1).body.messages[0].content, `[이전 대화 이어 하기]\n${resume}\n\n이어서 할게요.`);
+      assert.equal(one.status, 200);
+
+      const long = await h.chat({ message: '이어서', resume: '가'.repeat(20001) });
+      assert.equal(long.status, 400);
+      assert.equal(long.json.error, 'too_long_resume');
+    } finally { await h.close(); }
+  });
+
+  it('두 차시 프롬프트 모두 이어 하기를 다루고, 끝난 대화는 이어 하기를 안내한다', async () => {
+    const h = await startHarness({ SESSION_MAX_AGE_HOURS: '1' });
+    try {
+      for (const [, lesson] of h.lessons) assert.ok(lesson.prompt.text.includes('[이전 대화 이어 하기]'), `${lesson.id}차시`);
+      const old = signState({ v: 1, sid: 'expired-0001', l: 1, pv: h.systemPrompt.version, m: h.config.model, iat: Date.now() - 2 * 3600_000,
+        messages: [{ role: 'user', content: '안녕' }, { role: 'assistant', content: [{ type: 'text', text: '[단계 1/6 · 기술 고르기]\n안녕하세요' }] }] }, SECRET);
+      const expired = await h.chat({ message: '다시', state: old });
+      assert.equal(expired.status, 400);
+      assert.match(expired.json.message, /만료됐어요\. "이어서 새 대화 시작"/);
+    } finally { await h.close(); }
+  });
+
   it('단계 머리글은 그 차시의 전체 단계 수와 맞을 때만 읽는다', () => {
     assert.deepEqual(parseStage('[단계 2/6 · 근거 확인]\n본문', 6), { stage: 2, name: '근거 확인' });
     assert.equal(parseStage('[단계 2/5 · 근거 확인]', 6), null);
