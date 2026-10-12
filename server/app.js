@@ -16,7 +16,7 @@ const MSG = {
   badCode: '수업 코드가 맞지 않아요. 선생님께 다시 확인해 주세요.',
   rateCode: '수업 코드를 너무 많이 틀렸어요. 1분 뒤에 다시 시도해 주세요.',
   empty: '메시지를 입력해 주세요.',
-  tooLongTurns: '대화가 너무 길어졌어요. "처음부터 다시"를 눌러 새로 시작해 주세요.',
+  tooLongTurns: '대화가 너무 길어져 더 이어갈 수 없어요. 위쪽의 "대화 내려받기"로 지금까지의 대화를 저장한 뒤 선생님께 알려 주세요.',
   rateSession: '너무 빠르게 보내고 있어요. 잠시 뒤에 다시 보내 주세요.',
   rateIp: '지금 접속한 학생이 많아요. 잠시 뒤에 다시 보내 주세요.',
   daily: '오늘 사용할 수 있는 횟수를 모두 썼어요. 선생님께 알려 주세요.',
@@ -137,7 +137,8 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     next();
   });
 
-  app.use(express.json({ limit: '400kb' }));
+  // 긴 대화의 대화 정보(최대 maxStateChars자)를 받을 수 있게 한다.
+  app.use(express.json({ limit: Math.max(400_000, config.maxStateChars + 100_000) }));
   app.use(express.static(publicDir, { maxAge: 0, etag: true }));
 
   app.get('/api/health', (req, res) => {
@@ -171,6 +172,12 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     const requestedLesson = body.lesson === undefined ? 1 : Number(body.lesson);
     if (!lessons.has(requestedLesson)) return fail(res, 400, 'bad_lesson', MSG.badLesson);
 
+    // 대화 정보가 한도에 거의 찼으면, 답을 만들기 전에(비용을 쓰기 전에) 멈춘다.
+    if (typeof body.state === 'string' && body.state.length > config.maxStateChars * 0.95) {
+      console.warn(`[chat] 대화 길이 한도(크기)에 닿았어요. 차시=${requestedLesson}`);
+      return fail(res, 400, 'too_long', MSG.tooLongTurns);
+    }
+
     let sid;
     let history;
     let lesson;
@@ -201,7 +208,10 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     const card = !body.state && lesson.usesCard ? cleanText(body.card) : '';
     if ([...card].length > MAX_CARD_CHARS) return fail(res, 400, 'too_long_card', MSG.tooLongCard);
 
-    if (history.length / 2 >= config.maxTurns) return fail(res, 400, 'too_long', MSG.tooLongTurns);
+    if (history.length / 2 >= config.maxTurns) {
+      console.warn(`[chat] 대화 길이 한도(주고받기 ${config.maxTurns}번)에 닿았어요. 차시=${lesson.id} 세션=${sid.slice(0, 8)}`);
+      return fail(res, 400, 'too_long', MSG.tooLongTurns);
+    }
 
     // 싸게 거절할 수 있는 검사를 먼저 하고, 공용 주소 한도와 하루 상한은
     // 실제로 Anthropic까지 가는 요청에만 쓴다. 한 학생이 반 전체의 한도를 태우지 못하게 하기 위해서다.
@@ -290,12 +300,16 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
         config.sessionSecret,
       );
       if (state.length > config.maxStateChars) {
+        console.warn(`[chat] 대화 길이 한도(크기)를 답변 뒤에 넘었어요. 차시=${lesson.id} 세션=${sid.slice(0, 8)}`);
         send('error', { code: 'too_long', message: MSG.tooLongTurns });
         return;
       }
 
       const stage = parseStage(text, lesson.stages.length);
-      send('done', { state, stage: stage?.stage ?? null, stageName: stage?.name ?? null });
+      // 한도에 가까워지면 화면이 미리 알려 주도록 남은 횟수를 함께 보낸다.
+      const turnsLeft = config.maxTurns - (history.length / 2 + 1);
+      const nearLimit = turnsLeft <= 5 || state.length > config.maxStateChars * 0.8;
+      send('done', { state, stage: stage?.stage ?? null, stageName: stage?.name ?? null, turnsLeft, nearLimit });
       // 서버리스(Vercel)에서는 응답을 닫으면 함수가 멈출 수 있어서, 기록을 마친 뒤에 닫는다.
       await logger.log({ ...logBase, stage: stage?.stage ?? null, tutor: text });
     } catch (err) {

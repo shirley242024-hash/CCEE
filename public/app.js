@@ -10,7 +10,7 @@ const SID_RE = /^\d{5}$/;
 const $ = (sel) => document.querySelector(sel);
 const els = {
   main: $('#main'), log: $('#log'), steps: $('#steps'), caption: $('#stage-caption'), form: $('#composer'), input: $('#input'),
-  send: $('#send'), reset: $('#reset'), toPicker: $('#to-picker'), intro: $('#intro'), start: $('#start'), counter: $('#counter'),
+  send: $('#send'), reset: $('#reset'), toPicker: $('#to-picker'), download: $('#download'), intro: $('#intro'), start: $('#start'), counter: $('#counter'),
   codeField: $('#code-field'), code: $('#code'), labelField: $('#label-field'), label: $('#label'), logNotice: $('#log-notice'),
   title: $('#title'), subtitle: $('#subtitle'), picker: $('#picker'), lessonList: $('#lesson-list'), rules: $('#rules'),
   cardIn: $('#card-in'), cardInHint: $('#card-in-hint'), cardLoad: $('#card-load'), loadSid: $('#load-sid'), loadCard: $('#load-card'),
@@ -323,6 +323,36 @@ els.loadCard.addEventListener('click', async () => {
   }
 });
 
+/* ---------- 대화 내려받기(학생이 대화를 파일로 보관한다) ---------- */
+function updateDownload() {
+  els.download.hidden = !state.lesson || state.transcript.length === 0;
+}
+function downloadTranscript() {
+  const now = new Date();
+  const lines = [`${state.lesson.id}차시 · ${state.lesson.title}`, `내려받은 때: ${now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`, ''];
+  state.transcript.forEach((m) => {
+    if (m.role === 'student') {
+      lines.push('[나]', m.text, '');
+    } else {
+      const { stage, body } = splitHeader(m.text);
+      lines.push(stage ? `[챗봇 · ${stage}단계 ${stageName(stage)}]` : '[챗봇]', body.replace(/\*\*/g, '').trim(), '');
+    }
+  });
+  // 메모장 등에서 한글이 깨지지 않도록 UTF-8 표시(BOM)를 붙인다.
+  const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = now.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(/[-:]/g, '').replace(' ', '-').slice(0, 13);
+  a.href = url;
+  // 한글 파일 이름은 일부 브라우저에서 무시되어 영문으로 짓는다(예: ccee-lesson2-20261012-0930.txt).
+  a.download = `ccee-lesson${state.lesson.id}-${stamp}.txt`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+els.download.addEventListener('click', downloadTranscript);
+
 let stick = true;
 els.main.addEventListener('scroll', () => {
   stick = els.main.scrollHeight - els.main.scrollTop - els.main.clientHeight < 80;
@@ -454,6 +484,15 @@ async function send(text, { fromStart = false, card = '' } = {}) {
         state.pending = null;
         if (isCard(body)) addCardTools(tutor.wrap, body.trim());
         save();
+        updateDownload();
+        if (data.nearLimit) {
+          const left = Number(data.turnsLeft);
+          addNotice(left <= 0
+            ? '이번이 이 대화의 마지막 답이에요. 위쪽 "대화 내려받기"로 지금까지의 대화를 저장해 두세요.'
+            : left <= 5
+              ? `대화가 길어지고 있어요. ${left}번 더 보낼 수 있어요. 위쪽 "대화 내려받기"로 대화를 저장해 두세요.`
+              : '대화가 길어지고 있어요. 곧 더 이어갈 수 없게 되니, 위쪽 "대화 내려받기"로 대화를 저장해 두세요.');
+        }
       } else if (event === 'refusal' || event === 'error') {
         rollback(data.message || '답변을 만들지 못했어요.');
       }
@@ -599,6 +638,7 @@ function enterLesson(lesson) {
   introNode.hidden = false;
   showIntro();
   restore();
+  updateDownload();
 }
 
 /** 이 차시에서 저장해 둔 대화를 다시 그린다. */

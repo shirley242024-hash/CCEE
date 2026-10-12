@@ -74,8 +74,8 @@ export function loadConfig(env = process.env) {
     accessCode: env.ACCESS_CODE || '',
 
     maxStudentChars: int(env.MAX_STUDENT_CHARS, 1000),
-    maxTurns: int(env.MAX_TURNS, 40),
-    maxStateChars: int(env.MAX_STATE_CHARS, 240_000),
+    maxTurns: int(env.MAX_TURNS, 80),
+    maxStateChars: int(env.MAX_STATE_CHARS, 1_500_000),
     perSessionPerMinute: int(env.RATE_PER_SESSION_PER_MIN, 8),
     perIpPerMinute: int(env.RATE_PER_IP_PER_MIN, 240),
     newConversationsPerIpPerMinute: int(env.NEW_CONVERSATIONS_PER_IP_PER_MIN, 60),

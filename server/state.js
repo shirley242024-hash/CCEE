@@ -1,10 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 
 /**
  * 대화 기록을 서버가 서명한 토큰으로 주고받는다.
  * - 학생이 브라우저에서 챗봇의 말을 위조해 끼워 넣는 우회를 막는다.
  * - 서버에 DB 없이도 동작한다(서버가 여러 대여도 같은 SESSION_SECRET이면 된다).
  * 토큰에는 시스템 프롬프트가 들어가지 않는다.
+ * 형식: `z.<압축한 본문>.<서명>`. 압축하기 전에 만든 `<본문>.<서명>`도 계속 읽는다(진행 중인 대화가 이어지게).
  */
 
 export class StateError extends Error {}
@@ -15,8 +17,12 @@ function mac(body, secret) {
   return createHmac('sha256', secret).update(body).digest();
 }
 
+const ZIP = 'z';
+const MAX_INFLATED_BYTES = 16 * 1024 * 1024;
+
 export function signState(payload, secret) {
-  const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  // 대화가 길어질수록 매번 주고받는 크기가 커지므로 압축한다(한국어 대화는 절반 안팎으로 준다).
+  const body = `${ZIP}.${deflateRawSync(Buffer.from(JSON.stringify(payload), 'utf8')).toString('base64url')}`;
   return `${body}.${mac(body, secret).toString('base64url')}`;
 }
 
@@ -47,8 +53,10 @@ export function verifyState(token, secret, { maxAgeMs, maxChars }) {
     throw new StateError('대화 정보가 올바르지 않아요.');
   }
   const parts = token.split('.');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new StateError('대화 정보가 올바르지 않아요.');
-  const [body, given] = parts;
+  const zipped = parts.length === 3 && parts[0] === ZIP;
+  if (!(zipped || parts.length === 2) || parts.some((p) => !p)) throw new StateError('대화 정보가 올바르지 않아요.');
+  const body = parts.slice(0, -1).join('.');
+  const given = parts.at(-1);
 
   const expected = mac(body, secret);
   const givenBuf = Buffer.from(given, 'base64url');
@@ -58,7 +66,9 @@ export function verifyState(token, secret, { maxAgeMs, maxChars }) {
 
   let payload;
   try {
-    payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    // 서명을 확인한 뒤에만 푼다(서버가 만든 것만 풀린다).
+    const raw = Buffer.from(zipped ? parts[1] : body, 'base64url');
+    payload = JSON.parse((zipped ? inflateRawSync(raw, { maxOutputLength: MAX_INFLATED_BYTES }) : raw).toString('utf8'));
   } catch {
     throw new StateError('대화 정보가 올바르지 않아요.');
   }

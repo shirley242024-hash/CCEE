@@ -13,6 +13,9 @@ export function buildRequest({ config, systemPrompt, messages }) {
     // 시스템 프롬프트는 모든 학생이 똑같으므로 캐시해서 비용과 지연을 줄인다.
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages,
+    // 대화가 길어질수록 매 턴 이전 대화 전체를 다시 보내므로, 대화 부분도 캐시한다(마지막 블록에 자동으로 표시가 붙는다).
+    // 이전 대화는 캐시 읽기 가격으로 처리되어 긴 대화의 비용이 크게 줄어든다.
+    cache_control: { type: 'ephemeral' },
   };
   if (config.effort !== 'none') request.output_config = { effort: config.effort };
   return request;
