@@ -8,7 +8,7 @@ const CARD_NOTE = '(1차시 정리 카드를 함께 보냈어요)';
 const RESUME_NOTE = '(지난 대화를 정리해 함께 보냈어요)';
 const RESUME_TEXT = '이어서 할게요.';
 const RESUME_DIVIDER = '여기부터 이어서 새 대화';
-const RESUME_MAX = 12000; // 지난 대화 정리의 최대 글자 수(서버 한도보다 작게)
+const RESUME_MAX = 16000; // 지난 대화 정리의 최대 글자 수(서버 한도 20000자보다 작게)
 const ME_KEY = 'ccee.me'; // 학번·이름(대화 기록을 켰을 때만 묻는다). 차시를 오가도 다시 쓰지 않게 탭에 기억한다.
 const SID_RE = /^\d{5}$/;
 
@@ -29,7 +29,7 @@ const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
  *  - 실패하면 이번에 보낸 말풍선을 지우고, 쓴 글을 입력창에 되돌려 놓는다.
  */
 const state = {
-  cfg: { requiresAccessCode: false, logging: false, cardStorage: false, maxChars: 1000, maxCardChars: 3000, lessons: [] },
+  cfg: { requiresAccessCode: false, logging: false, cardStorage: false, maxChars: 2000, maxCardChars: 3000, lessons: [] },
   cfgOk: false,
   cfgError: '',
   lesson: null, // 지금 하는 차시(차시 고르기 화면에서는 null)
@@ -355,7 +355,8 @@ function buildResume() {
   });
   const total = state.lesson.stages.length;
   const head = state.stage ? `지금 단계: [단계 ${state.stage}/${total} · ${stageName(state.stage)}]` : '지금 단계: 아직 표시되지 않음';
-  const all = students.map((t, i) => `[학생 ${i + 1}] ${clip(t, 400)}`);
+  // 3차시 설계 양식처럼 긴 글도 대부분 남도록 학생 글 하나는 1000자까지 둔다.
+  const all = students.map((t, i) => `[학생 ${i + 1}] ${clip(t, 1000)}`);
   const tail = tutors.slice(-3).map((t) => `[챗봇] ${clip(t, 1500)}`);
   const compose = (lines) => [head, '(앞선 대화가 길어져 학생 화면이 정리한 것입니다. 긴 글은 줄였을 수 있습니다.)', '', '학생이 쓴 글(오래된 것부터):', ...lines, '', '챗봇의 최근 말:', ...tail].join('\n');
   let text = compose(all);

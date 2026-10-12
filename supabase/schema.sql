@@ -10,11 +10,15 @@ create table if not exists public.chat_logs (
   label          text        check (char_length(label) <= 30),   -- 학생이 적은 별명/번호(선택)
   role           text        not null check (role in ('student', 'tutor')),
   content        text        not null check (char_length(content) <= 4000),
-  stage          smallint    check (stage between 1 and 6),
+  stage          smallint    check (stage between 1 and 8),
   flagged        boolean     not null default false,     -- 위기 신호 표현이 감지된 학생 메시지
   model          text        check (char_length(model) <= 100),
   prompt_version text        check (char_length(prompt_version) <= 16)
 );
+
+-- 3차시는 8단계라서 단계 범위를 1~8로 둔다. 1~6으로 만들었던 테이블도 여기서 고친다.
+alter table public.chat_logs drop constraint if exists chat_logs_stage_check;
+alter table public.chat_logs add constraint chat_logs_stage_check check (stage between 1 and 8);
 
 -- 차시를 나누기 전에 만든 테이블에도 차시 열을 더한다.
 alter table public.chat_logs add column if not exists lesson smallint check (lesson between 1 and 3);
@@ -75,6 +79,10 @@ grant select, insert on public.lesson1_cards to service_role;
 -- 한 학생의 대화를 차시별로 처음부터 읽기:
 --   select created_at, lesson, role, stage, content
 --   from public.chat_logs where student_id = '20101' order by lesson, id;
+--
+-- 단계 범위가 1~8로 바뀌었는지 확인하기(결과가 한 줄이고 stage <= 8이 보이면 됩니다):
+--   select conname, pg_get_constraintdef(oid) from pg_constraint
+--   where conrelid = 'public.chat_logs'::regclass and pg_get_constraintdef(oid) like '%stage%';
 --
 -- 학생별로 차시마다 몇 번 주고받았는지 보기:
 --   select student_id, student_name, lesson, count(*) filter (where role = 'student') as messages
