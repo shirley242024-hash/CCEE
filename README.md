@@ -9,6 +9,7 @@
 |---|---|
 | `prompts/lesson1_system_prompt.md` | 챗봇의 시스템 프롬프트(6단계 진행 규칙, 힌트 사다리, 자료 확인 규칙) |
 | `server/`, `public/` | 학생용 챗봇 서버와 채팅 화면 |
+| `index.js`, `vercel.json` | Vercel 배포용 진입점과 설정(내 PC에서는 쓰지 않음) |
 | `supabase/schema.sql` | (선택) 교사용 대화 기록 테이블 |
 | `docs/DEPLOY.md` | **실행·배포·수업 전 점검표** |
 | `tests/` | 모의 Anthropic 서버로 하는 자동 테스트 |

@@ -219,7 +219,7 @@ export function createApp({ config, client, logger, systemPrompt }) {
 
       if (final.stop_reason === 'refusal') {
         send('refusal', { message: MSG.refusal });
-        logger.log({ sessionId: sid, label, stage: null, flagged, model: config.model, promptVersion: systemPrompt.version, student: message, tutor: null });
+        await logger.log({ sessionId: sid, label, stage: null, flagged, model: config.model, promptVersion: systemPrompt.version, student: message, tutor: null });
         return;
       }
       if (final.stop_reason === 'model_context_window_exceeded') {
@@ -249,7 +249,8 @@ export function createApp({ config, client, logger, systemPrompt }) {
 
       const stage = parseStage(text);
       send('done', { state, stage: stage?.stage ?? null, stageName: stage?.name ?? null });
-      logger.log({ sessionId: sid, label, stage: stage?.stage ?? null, flagged, model: config.model, promptVersion: systemPrompt.version, student: message, tutor: text });
+      // 서버리스(Vercel)에서는 응답을 닫으면 함수가 멈출 수 있어서, 기록을 마친 뒤에 닫는다.
+      await logger.log({ sessionId: sid, label, stage: stage?.stage ?? null, flagged, model: config.model, promptVersion: systemPrompt.version, student: message, tutor: text });
     } catch (err) {
       if (aborter.signal.aborted) return; // 학생이 창을 닫았거나 연결이 끊김
       const info = describeError(err);
