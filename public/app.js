@@ -20,6 +20,7 @@ const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
 const state = {
   cfg: { requiresAccessCode: false, logging: false, maxChars: 1000 },
   cfgOk: false,
+  cfgError: '',
   token: null,
   busy: false,
   stage: 0, // 서버가 확정한 현재 단계
@@ -445,6 +446,11 @@ async function loadConfig() {
     try {
       const res = await fetch('/api/config');
       if (res.ok) { state.cfg = await res.json(); state.cfgOk = true; return; }
+      if (res.status === 503) {
+        // 서버 설정 오류는 다시 시도해도 같으므로 서버가 준 안내를 바로 보여 준다.
+        try { state.cfgError = (await res.json()).message || ''; } catch { /* 본문 없음 */ }
+        break;
+      }
     } catch { /* 다시 시도 */ }
     await new Promise((r) => setTimeout(r, 500 * (i + 1)));
   }
@@ -457,7 +463,7 @@ async function init() {
   if (!state.cfgOk) {
     els.start.disabled = true;
     els.send.disabled = true;
-    addNotice('설정을 불러오지 못했어요. 화면을 새로고침해 주세요.', { error: true });
+    addNotice(state.cfgError || '설정을 불러오지 못했어요. 화면을 새로고침해 주세요.', { error: true });
     return;
   }
 
