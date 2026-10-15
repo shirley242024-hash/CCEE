@@ -18,6 +18,7 @@
 | `server/`, `public/` | 학생용 챗봇 서버와 채팅 화면 |
 | `index.js`, `vercel.json` | Vercel 배포용 진입점과 설정(내 PC에서는 쓰지 않음) |
 | `supabase/schema.sql` | (선택) 교사용 대화 기록, 학번으로 저장한 1차시 정리 카드 테이블 |
+| `public/teacher.html` | (선택) 교사용 대화 기록 화면: 학생별·차시별로 읽기, 위기 신호·욕설 대화 먼저 보기(`TEACHER_CODE`, docs/DEPLOY.md 2-2) |
 | `docs/DEPLOY.md` | **실행·배포·수업 전 점검표** |
 | `tests/` | 모의 Anthropic 서버로 하는 자동 테스트 |
 

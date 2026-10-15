@@ -1,0 +1,54 @@
+/* 교사용 대화 기록 화면. 색과 글꼴, 말풍선은 styles.css를 그대로 쓰고 배치만 더한다. */
+body.teacher { height: auto; min-height: 100%; }
+.t-app { max-width: 900px; margin: 0 auto; padding: 0 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+
+.t-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 16px 0 0; }
+.t-top h1 { margin: 0; font-size: 1.25rem; }
+
+.t-code {
+  font: inherit; color: var(--ink); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
+  flex: 1 1 16em; min-width: 0;
+}
+.t-status { margin: 0; font-size: 0.875rem; color: var(--err-ink); }
+.t-status:empty { display: none; }
+
+.t-board { display: flex; flex-direction: column; gap: 20px; }
+.t-section { display: flex; flex-direction: column; gap: 10px; }
+.t-section h2 { margin: 0; font-size: 1.05rem; }
+
+.t-badge {
+  display: inline-block; font-size: 0.75rem; font-weight: 650; line-height: 1.6;
+  padding: 0 8px; border-radius: 999px; white-space: nowrap;
+}
+.t-badge.risk { background: var(--err-bg); color: var(--err-ink); }
+.t-badge.prof { background: var(--warn-bg); color: var(--warn-ink); }
+.t-badge.note { background: var(--accent-soft); color: var(--accent); }
+
+.t-alerts, .t-students { display: flex; flex-direction: column; gap: 10px; }
+.t-alert, .t-student {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.t-alert.risk { border-color: var(--err-ink); }
+.t-alert .secondary { align-self: flex-start; }
+.t-alert-head, .t-student-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; word-break: keep-all; }
+.t-samples { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+
+.t-filter {
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; width: 100%; max-width: 22em;
+}
+.t-lessons { display: flex; flex-wrap: wrap; gap: 8px; }
+.t-lesson { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 0; }
+.t-lesson-sub { font-size: 0.75rem; font-weight: 400; }
+
+.t-detail { display: flex; flex-direction: column; gap: 12px; }
+.t-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.t-detail-head h2 { margin: 0; font-size: 1.05rem; word-break: keep-all; }
+.t-sessions { display: flex; flex-direction: column; gap: 24px; }
+.t-session { display: flex; flex-direction: column; gap: 10px; }
+.t-session h3 { margin: 0; font-size: 0.9375rem; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.msg.student .t-meta { justify-content: flex-end; }
+.bubble.t-marked { outline: 3px solid var(--err-ink); outline-offset: 1px; }

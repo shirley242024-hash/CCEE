@@ -58,6 +58,20 @@ export function loadConfig(env = process.env) {
     errors.push('SAVE_CARDS=true이면 SUPABASE_URL과 SUPABASE_SECRET_KEY가 필요해요.');
   }
 
+  // 교사용 화면은 모든 학생의 학번·이름·대화를 보여 주므로, 조건이 하나라도 안 맞으면 끈다.
+  // 학생용 챗봇은 그대로 동작해야 하므로 오류가 아니라 경고로 알린다.
+  let teacherCode = env.TEACHER_CODE || '';
+  if (teacherCode) {
+    let off = '';
+    if (teacherCode.length < 12) off = 'TEACHER_CODE가 12자보다 짧아요. 추측하기 어려운 16자 이상을 권해요.';
+    else if (teacherCode === env.ACCESS_CODE) off = 'TEACHER_CODE가 학생용 ACCESS_CODE와 같아요. 다른 값으로 정해 주세요.';
+    else if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) off = 'TEACHER_CODE를 쓰려면 SUPABASE_URL과 SUPABASE_SECRET_KEY가 필요해요.';
+    if (off) {
+      warnings.push(`${off} 교사용 화면을 켜지 않았어요.`);
+      teacherCode = '';
+    }
+  }
+
   return {
     prod,
     port: int(env.PORT, 3000),
@@ -86,6 +100,7 @@ export function loadConfig(env = process.env) {
 
     logChats,
     saveCards,
+    teacherCode,
     supabaseUrl: env.SUPABASE_URL || '',
     supabaseKey: env.SUPABASE_PUBLISHABLE_KEY || '',
     supabaseSecretKey: env.SUPABASE_SECRET_KEY || '',
