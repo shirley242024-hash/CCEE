@@ -11,6 +11,7 @@ import { createCardStore } from './server/cards.js';
 import { loadConfig } from './server/config.js';
 import { loadLessons } from './server/lessons.js';
 import { createLogger } from './server/logger.js';
+import { createTeacherStore } from './server/teacher.js';
 
 // 함수가 여러 개로 늘어나도 같은 키와 비밀 값을 써야 하므로 항상 운영 기준으로 검사한다.
 // Vercel은 X-Forwarded-For를 실제 접속 주소로 덮어쓰므로 프록시 한 단계를 믿는다.
@@ -33,7 +34,9 @@ if (config.errors.length > 0) {
   config.warnings.forEach((w) => console.warn(`[주의] ${w}`));
   // 차시별 프롬프트 경로는 server/lessons.js에 고정된 문자열로 적혀 있어 Vercel 배포 묶음에 들어간다.
   const client = new Anthropic({ apiKey: config.anthropicApiKey, maxRetries: 2 });
-  app = createApp({ config, client, logger: createLogger(config), lessons: loadLessons(), cardStore: createCardStore(config) });
+  app = createApp({
+    config, client, logger: createLogger(config), lessons: loadLessons(), cardStore: createCardStore(config), teacherStore: createTeacherStore(config),
+  });
 }
 
 export default app;

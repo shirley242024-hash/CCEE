@@ -24,3 +24,28 @@ export function detectRisk(text) {
   if (typeof text !== 'string') return false;
   return PATTERNS.some((re) => re.test(text));
 }
+
+/**
+ * 학생 메시지에서 욕설로 보이는 표현을 찾아 교사용 화면에 '표시'만 한다(기록을 읽을 때 검사한다).
+ * - 단순 낱말 검사라서 놓치는 경우도, 잘못 걸리는 경우도 있다. 교사가 대화를 읽고 판단한다.
+ * - 일상 표현과 겹치는 낱말은 뺐다: '시발점·시발역', '불이 꺼져', '새끼손가락', '엄마를 졸라서', '미친 듯이', '개새로운', '등신대' 등.
+ */
+const PROFANITY = [
+  /씨발|씨바|씨빨|시발(?!점|역|택시)|ㅅㅂ|ㅆㅂ|ㅆㅃ/,
+  /병신|븅신|빙신|ㅂㅅ/,
+  /좆|존나|ㅈㄴ/,
+  /개새끼|개색기|개새야|새끼야/,
+  /미친놈|미친년|미친새끼|ㅁㅊ/,
+  /지랄|ㅈㄹ/,
+  /닥쳐|닥치라/,
+  /엿\s?먹어|엿같/,
+  /염병|썅|쌍놈|쌍년|등신(?!대)/,
+  /니애미|느금|엠창/,
+  /개같(?:은|이|네|다)/,
+  /\b(?:fuck|shit|bitch|asshole|wtf)/i,
+];
+
+export function detectProfanity(text) {
+  if (typeof text !== 'string') return false;
+  return PROFANITY.some((re) => re.test(text));
+}

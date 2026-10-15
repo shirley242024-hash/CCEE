@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>교사용 대화 기록</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/teacher.css">
+</head>
+<body class="teacher">
+  <div class="t-app">
+    <header class="t-top">
+      <div class="titles">
+        <h1>교사용 대화 기록</h1>
+        <p>학생별·차시별로 대화를 읽어요. 이 화면에서는 기록을 보기만 할 수 있어요.</p>
+      </div>
+      <div class="top-actions">
+        <button id="reload" class="ghost" type="button" hidden>다시 불러오기</button>
+        <button id="lock" class="ghost" type="button" hidden>잠그기</button>
+      </div>
+    </header>
+
+    <section id="login" class="intro" aria-labelledby="login-title">
+      <h2 id="login-title">선생님 코드</h2>
+      <p class="notice">학생의 학번·이름·대화가 그대로 보여요. 다른 사람이 볼 수 있는 곳에서 열지 마세요.</p>
+      <form id="login-form" class="row" autocomplete="off">
+        <label for="code" class="sr-only">선생님 코드</label>
+        <input id="code" class="t-code" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="128" placeholder="TEACHER_CODE에 넣은 값">
+        <button class="primary" type="submit">기록 불러오기</button>
+      </form>
+      <p class="hint">코드는 이 화면에만 잠시 기억해요. 새로 고치거나 '잠그기'를 누르면 다시 입력해야 해요.</p>
+      <p id="login-status" class="t-status" role="status"></p>
+    </section>
+
+    <main id="board" class="t-board" hidden>
+      <p id="summary" class="hint"></p>
+      <p id="truncated" class="notice" hidden></p>
+
+      <section class="t-section" aria-labelledby="alerts-title">
+        <h2 id="alerts-title">먼저 확인할 대화</h2>
+        <p class="hint">위기 신호나 욕설로 보이는 표현이 있는 학생 메시지가 있는 대화예요. 단순한 낱말 검사라서 놓치거나 잘못 걸리는 경우가 있으니 대화를 읽고 판단해 주세요.</p>
+        <div id="alerts" class="t-alerts"></div>
+      </section>
+
+      <section class="t-section" aria-labelledby="students-title">
+        <h2 id="students-title">학생 목록</h2>
+        <label for="filter" class="sr-only">학번 또는 이름으로 찾기</label>
+        <input id="filter" class="t-filter" type="search" autocomplete="off" placeholder="학번 또는 이름으로 찾기">
+        <div id="students" class="t-students"></div>
+      </section>
+    </main>
+
+    <section id="detail" class="t-detail" hidden aria-labelledby="detail-title">
+      <div class="t-detail-head">
+        <button id="back" class="ghost" type="button">← 목록으로</button>
+        <h2 id="detail-title"></h2>
+      </div>
+      <p id="detail-status" class="t-status" role="status"></p>
+      <div id="sessions" class="t-sessions"></div>
+    </section>
+  </div>
+  <script type="module" src="/teacher.js"></script>
+</body>
+</html>

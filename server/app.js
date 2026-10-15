@@ -43,7 +43,15 @@ const MSG = {
   badCard: '챗봇이 대화에서 만든 정리 카드만 저장할 수 있어요.',
   noCard: '이 학번으로 저장된 1차시 정리 카드가 없어요. 학번을 확인하거나, 카드를 직접 붙여 넣어 주세요.',
   cardsFailed: '정리 카드를 저장하거나 불러오지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+  teacherOff: '교사용 화면이 꺼져 있어요. TEACHER_CODE, SUPABASE_URL, SUPABASE_SECRET_KEY 설정을 확인해 주세요(docs/DEPLOY.md 2-2).',
+  badTeacherCode: '선생님 코드가 맞지 않아요.',
+  rateTeacherCode: '선생님 코드를 너무 많이 틀렸어요. 1분 뒤에 다시 시도해 주세요.',
+  badTeacherQuery: '학번 또는 차시가 올바르지 않아요.',
+  teacherFailed: '대화 기록을 불러오지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
 };
+
+/** 교사용 화면에서 틀린 선생님 코드를 받는 횟수(주소별 1분). 학생 수업 코드보다 엄격하게 둔다. */
+const TEACHER_BAD_CODE_PER_MIN = 10;
 
 function sha(text) {
   return createHash('sha256').update(String(text)).digest();
@@ -96,8 +104,9 @@ function describeError(err) {
  * @param {{enabled: boolean, log: Function}} deps.logger
  * @param {ReturnType<import('./lessons.js').loadLessons>} deps.lessons
  * @param {ReturnType<import('./cards.js').createCardStore>} [deps.cardStore] 학번 카드 저장소(꺼져 있으면 null)
+ * @param {ReturnType<import('./teacher.js').createTeacherStore>} [deps.teacherStore] 교사용 기록 읽기(꺼져 있으면 null)
  */
-export function createApp({ config, client, logger, lessons, cardStore = null }) {
+export function createApp({ config, client, logger, lessons, cardStore = null, teacherStore = null }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
@@ -107,6 +116,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
   const startLimiter = new SlidingWindowLimiter({ max: config.newConversationsPerIpPerMinute, windowMs: 60_000 });
   const badCodeLimiter = new SlidingWindowLimiter({ max: config.badCodePerIpPerMinute, windowMs: 60_000 });
   const cardLimiter = new SlidingWindowLimiter({ max: config.cardRequestsPerIpPerMinute, windowMs: 60_000 });
+  const teacherCodeLimiter = new SlidingWindowLimiter({ max: TEACHER_BAD_CODE_PER_MIN, windowMs: 60_000 });
   const daily = new DailyCap(config.dailyRequestCap);
   const inflight = new InFlight();
   let activeStreams = 0;
@@ -412,6 +422,58 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     res.json(found);
   });
 
+  /**
+   * 교사용 요청 공통 검사. 통과하면 true, 아니면 응답을 보내고 false.
+   * 학생 기록을 담은 응답이므로 브라우저나 중간 서버가 저장하지 않게 한다.
+   * 틀린 코드를 계속 대입하는 것을 막고, 한도를 넘으면 맞는 코드도 잠시 받지 않는다(rejectedByCode와 같은 이유).
+   */
+  function checkTeacher(req, res, body) {
+    res.set('Cache-Control', 'no-store');
+    if (!teacherStore) {
+      fail(res, 404, 'teacher_off', MSG.teacherOff);
+      return false;
+    }
+    const ip = req.ip || 'unknown';
+    if (teacherCodeLimiter.count(ip) >= TEACHER_BAD_CODE_PER_MIN) {
+      fail(res, 429, 'rate_teacher_code', MSG.rateTeacherCode);
+      return false;
+    }
+    if (!codeMatches(body.teacherCode, config.teacherCode)) {
+      teacherCodeLimiter.take(ip);
+      fail(res, 401, 'bad_teacher_code', MSG.badTeacherCode);
+      return false;
+    }
+    return true;
+  }
+
+  app.post('/api/teacher/overview', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!checkTeacher(req, res, body)) return;
+    try {
+      res.json(await teacherStore.overview());
+    } catch (err) {
+      console.error(`[teacher] ${err.message}`);
+      fail(res, 502, 'teacher_failed', MSG.teacherFailed);
+    }
+  });
+
+  app.post('/api/teacher/conversation', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!checkTeacher(req, res, body)) return;
+    // 학번이 비어 있거나(null) 차시가 비어 있는(null) 예전 기록도 볼 수 있게 한다.
+    const studentId = body.studentId === null ? null : cleanText(body.studentId);
+    const lesson = body.lesson === null ? null : Number(body.lesson);
+    if ((studentId !== null && !STUDENT_ID_RE.test(studentId)) || (lesson !== null && !(Number.isInteger(lesson) && lesson >= 1 && lesson <= 3))) {
+      return fail(res, 400, 'bad_teacher_query', MSG.badTeacherQuery);
+    }
+    try {
+      res.json(await teacherStore.conversation(studentId, lesson));
+    } catch (err) {
+      console.error(`[teacher] ${err.message}`);
+      fail(res, 502, 'teacher_failed', MSG.teacherFailed);
+    }
+  });
+
   app.use('/api', (req, res) => res.status(404).json({ error: 'not_found', message: '없는 주소예요.' }));
 
   // eslint-disable-next-line no-unused-vars
@@ -428,6 +490,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null })
     startLimiter.close();
     badCodeLimiter.close();
     cardLimiter.close();
+    teacherCodeLimiter.close();
   };
   return app;
 }
