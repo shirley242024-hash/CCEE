@@ -5,6 +5,7 @@ import { loadConfig } from '../server/config.js';
 import { DailyCap, InFlight, SlidingWindowLimiter } from '../server/limits.js';
 import { detectRisk } from '../server/safety.js';
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { signState, verifyState, StateError } from '../server/state.js';
 
 const SECRET = 'k'.repeat(40);
@@ -117,5 +118,16 @@ describe('설정 검사', () => {
   });
   it('대화 기록 저장은 Supabase 설정이 있어야 켤 수 있다', () => {
     assert.ok(loadConfig({ SESSION_SECRET: SECRET, LOG_CHATS: 'true' }).errors.length > 0);
+  });
+});
+
+describe('응답 대기 제한', () => {
+  it('화면의 대기 제한은 서버 ping 간격의 3배 이상이다(ping을 한두 번 놓쳐도 끊지 않는다)', () => {
+    const client = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+    const server = readFileSync(new URL('../server/app.js', import.meta.url), 'utf8');
+    const stall = Number(/const STALL_MS = ([\d_]+);/.exec(client)?.[1].replaceAll('_', ''));
+    const ping = Number(/res\.write\(': ping\\n\\n'\);\s*\}, ([\d_]+)\)/.exec(server)?.[1].replaceAll('_', ''));
+    assert.ok(stall > 0 && ping > 0, `STALL_MS=${stall}, ping=${ping}`);
+    assert.ok(stall >= ping * 3, `STALL_MS=${stall}, ping=${ping}`);
   });
 });

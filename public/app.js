@@ -11,6 +11,10 @@ const RESUME_DIVIDER = '여기부터 이어서 새 대화';
 const RESUME_MAX = 16000; // 지난 대화 정리의 최대 글자 수(서버 한도 20000자보다 작게)
 const ME_KEY = 'ccee.me'; // 학번·이름(대화 기록을 켰을 때만 묻는다). 차시를 오가도 다시 쓰지 않게 탭에 기억한다.
 const SID_RE = /^\d{5}$/;
+// 서버는 답을 만드는 동안 15초마다 ping을 보낸다(server/app.js). 응답이 이만큼 아무것도 오지 않으면
+// 연결이 끊긴 것으로 보고 기다리기를 멈춘다. 그러지 않으면 로딩 표시가 끝없이 남고 입력창도 잠긴다.
+const STALL_MS = 45_000;
+const STALL_MESSAGE = '답이 오지 않아 기다리기를 멈췄어요. 다시 보내 주세요.';
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -447,13 +451,15 @@ function setBusy(busy, { focus = true } = {}) {
   if (!busy && focus) els.input.focus({ preventScroll: true });
 }
 
-async function readSse(response, onEvent) {
+/** onData는 ping을 포함해 무엇이든 받을 때마다 부른다(연결이 살아 있다는 뜻). */
+async function readSse(response, onEvent, onData) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
+    onData?.();
     buf += decoder.decode(value, { stream: true });
     let idx;
     while ((idx = buf.indexOf('\n\n')) >= 0) {
@@ -493,6 +499,15 @@ async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
   let buffer = '';
   let finished = false;
   let focusAfter = null;
+  // 응답 대기 제한: 보낸 뒤나 마지막으로 무엇을 받은 뒤 STALL_MS 동안 조용하면 요청을 끊는다.
+  const aborter = new AbortController();
+  let stalled = false;
+  let watchdog = null;
+  const kick = () => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => { stalled = true; aborter.abort(); }, STALL_MS);
+  };
+  kick();
 
   /** 실패: 이번 말풍선을 지우고, 단계 표시를 되돌리고, 쓴 글을 입력창에 돌려 놓는다. */
   const rollback = (message, code = '') => {
@@ -519,7 +534,9 @@ async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
         message: text, lesson: state.lesson.id, card: card || undefined, resume: resume || undefined, state: state.token,
         accessCode: els.code.value.trim(), ...identity(),
       }),
+      signal: aborter.signal,
     });
+    kick();
 
     if (!res.ok) {
       let msg = '문제가 생겼어요. 잠시 뒤에 다시 시도해 주세요.';
@@ -576,12 +593,14 @@ async function send(text, { fromStart = false, card = '', resume = '' } = {}) {
       } else if (event === 'refusal' || event === 'error') {
         rollback(data.message || '답변을 만들지 못했어요.', data.code);
       }
-    });
+    }, kick);
 
     if (!finished) rollback('연결이 끊겼어요. 다시 보내 주세요.');
   } catch {
-    if (!finished) rollback('인터넷 연결을 확인해 주세요.');
+    // 답을 다 받은 뒤(done)에 끊긴 것은 문제가 아니다.
+    if (!finished) rollback(stalled ? STALL_MESSAGE : '인터넷 연결을 확인해 주세요.');
   } finally {
+    clearTimeout(watchdog);
     setBusy(false, { focus: !focusAfter });
     focusAfter?.focus();
     scrollDown();
