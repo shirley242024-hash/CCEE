@@ -1,4 +1,7 @@
 /* 교사용 대화 기록 화면. 색과 글꼴, 말풍선은 styles.css를 그대로 쓰고 배치만 더한다. */
+/* '다른 AI 글' 표시 색(위기 신호·욕설과 구분). */
+:root { --paste-bg: #ece6fb; --paste-ink: #4a2a8a; }
+@media (prefers-color-scheme: dark) { :root { --paste-bg: #2c2347; --paste-ink: #d4c6ff; } }
 body.teacher { height: auto; min-height: 100%; }
 .t-app { max-width: 900px; margin: 0 auto; padding: 0 16px 40px; display: flex; flex-direction: column; gap: 16px; }
 
@@ -24,6 +27,7 @@ body.teacher { height: auto; min-height: 100%; }
 .t-badge.risk { background: var(--err-bg); color: var(--err-ink); }
 .t-badge.prof { background: var(--warn-bg); color: var(--warn-ink); }
 .t-badge.note { background: var(--accent-soft); color: var(--accent); }
+.t-badge.paste { background: var(--paste-bg); color: var(--paste-ink); }
 
 .t-alerts, .t-students { display: flex; flex-direction: column; gap: 10px; }
 .t-alert, .t-student {
@@ -31,6 +35,8 @@ body.teacher { height: auto; min-height: 100%; }
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
 }
 .t-alert.risk { border-color: var(--err-ink); }
+.t-alert.paste { border-color: var(--paste-ink); }
+.t-paste-item { display: flex; flex-direction: column; gap: 2px; }
 .t-alert .secondary { align-self: flex-start; }
 .t-alert-head, .t-student-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; word-break: keep-all; }
 .t-samples { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
@@ -52,3 +58,4 @@ body.teacher { height: auto; min-height: 100%; }
 .t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .msg.student .t-meta { justify-content: flex-end; }
 .bubble.t-marked { outline: 3px solid var(--err-ink); outline-offset: 1px; }
+.bubble.t-pasted { outline: 3px solid var(--paste-ink); outline-offset: 1px; }
