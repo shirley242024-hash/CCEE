@@ -7,7 +7,7 @@ import { MAX_CARD_CHARS, STUDENT_ID_RE } from './cards.js';
 import { buildRequest, MAX_RESUME_CHARS, parseStage, textOf, withCard, withResume } from './chat.js';
 import { publicLessons } from './lessons.js';
 import { DailyCap, InFlight, SlidingWindowLimiter } from './limits.js';
-import { detectRisk } from './safety.js';
+import { detectPasteWarning, detectRisk } from './safety.js';
 import { signState, StateError, verifyState } from './state.js';
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -337,6 +337,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null, t
       }
 
       const stage = parseStage(text, lesson.stages.length);
+      if (detectPasteWarning(text)) console.warn(`[PASTE] 챗봇이 다른 AI 글로 보인다고 경고했어요. 차시=${lesson.id} 세션=${sid.slice(0, 8)}`);
       // 한도에 가까워지면 화면이 미리 알려 주도록 남은 횟수를 함께 보낸다.
       const turnsLeft = config.maxTurns - (history.length / 2 + 1);
       const nearLimit = turnsLeft <= 5 || state.length > config.maxStateChars * 0.8;

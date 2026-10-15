@@ -6,7 +6,7 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   login: $('#login'), form: $('#login-form'), code: $('#code'), loginStatus: $('#login-status'),
   board: $('#board'), summary: $('#summary'), truncated: $('#truncated'),
-  alerts: $('#alerts'), students: $('#students'), filter: $('#filter'),
+  alerts: $('#alerts'), pasted: $('#pasted'), students: $('#students'), filter: $('#filter'),
   detail: $('#detail'), detailTitle: $('#detail-title'), detailStatus: $('#detail-status'), sessions: $('#sessions'),
   back: $('#back'), reload: $('#reload'), lock: $('#lock'),
 };
@@ -108,14 +108,48 @@ function renderOverview() {
       li.append(el('span', 'hint', `${fmt(s.createdAt)} `), document.createTextNode(s.text));
       ul.append(li);
     }
-    card.append(ul);
-    const open = el('button', 'secondary', '대화 보기');
-    open.type = 'button';
-    open.addEventListener('click', () => openConversation(a.studentId, a.lesson, a.names));
-    card.append(open);
+    card.append(ul, openButton(a.studentId, a.lesson, a.names));
     els.alerts.append(card);
   }
+  renderPasted(o.pasted || []);
   renderStudents();
+}
+
+function openButton(studentId, lesson, names) {
+  const open = el('button', 'secondary', '대화 보기');
+  open.type = 'button';
+  open.addEventListener('click', () => openConversation(studentId, lesson, names));
+  return open;
+}
+
+/** 챗봇이 '다른 AI 글'로 경고한 학생. 경고한 글과, 그 뒤에 학생이 보낸 글(다시 쓰기·선생님 호출·호출 완료)을 함께 보인다. */
+function renderPasted(list) {
+  els.pasted.replaceChildren();
+  if (!list.length) els.pasted.append(el('p', 'hint', '다른 AI 글로 보인다고 경고한 대화가 없어요.'));
+  for (const p of list) {
+    const card = el('article', 't-alert paste');
+    const head = el('div', 't-alert-head');
+    head.append(el('strong', '', `${who(p.studentId, p.names)} · ${lessonLabel(p.lesson)}`));
+    head.append(badge('paste', `경고 ${p.warnings}`));
+    if (p.calls) head.append(badge('note', `선생님 호출 ${p.calls}`));
+    head.append(el('span', 'hint', `마지막 ${fmt(p.lastAt)}`));
+    card.append(head);
+    const ul = el('ul', 't-samples');
+    for (const item of p.items) {
+      const li = el('li', 't-paste-item');
+      const line = el('div');
+      line.append(el('span', 'hint', `${fmt(item.createdAt)} 경고한 글: `), document.createTextNode(item.text ?? '(학생 글을 찾지 못했어요)'));
+      li.append(line);
+      if (item.next) {
+        const next = el('div');
+        next.append(el('span', 'hint', '그다음 학생 글: '), document.createTextNode(item.next));
+        li.append(next);
+      }
+      ul.append(li);
+    }
+    card.append(ul, openButton(p.studentId, p.lesson, p.names));
+    els.pasted.append(card);
+  }
 }
 
 function renderStudents() {
@@ -130,6 +164,7 @@ function renderStudents() {
     if (s.names.length > 1) head.append(badge('note', '이름이 여러 개'));
     if (s.risk) head.append(badge('risk', `위기 신호 ${s.risk}`));
     if (s.profanity) head.append(badge('prof', `욕설 ${s.profanity}`));
+    if (s.pasted) head.append(badge('paste', `AI 글 경고 ${s.pasted}`));
     row.append(head);
     const lessons = el('div', 't-lessons');
     for (const l of s.lessons) {
@@ -174,7 +209,9 @@ async function openConversation(studentId, lesson, names) {
       meta.append(el('span', 'hint', `${m.role === 'student' ? '학생' : '챗봇'} · ${fmt(m.createdAt)}`));
       if (m.risk) meta.append(badge('risk', '위기 신호'));
       if (m.profanity) meta.append(badge('prof', '욕설'));
-      const bubble = el('div', `bubble${m.risk || m.profanity ? ' t-marked' : ''}`);
+      if (m.pasted) meta.append(badge('paste', '다른 AI 글 경고'));
+      if (m.call) meta.append(badge('note', '선생님 호출 안내'));
+      const bubble = el('div', `bubble${m.risk || m.profanity ? ' t-marked' : m.pasted ? ' t-pasted' : ''}`);
       if (m.role === 'student') bubble.textContent = m.content;
       else renderRich(bubble, m.content.replace(HEADER_RE, ''));
       wrap.append(meta, bubble);
@@ -196,6 +233,7 @@ function lock(message = '') {
   state.overview = null;
   els.code.value = '';
   els.alerts.replaceChildren();
+  els.pasted.replaceChildren();
   els.students.replaceChildren();
   els.sessions.replaceChildren();
   els.board.hidden = true;
