@@ -258,6 +258,11 @@ describe('교사용 화면', () => {
       assert.match(page, /<script type="module" src="\/teacher.js"><\/script>/);
       assert.match(page, /noindex/);
       assert.match(page, /id="pasted"/);
+      // PDF로 저장: 학생별·전체 버튼과 인쇄용 영역, 인쇄 때만 보이는 스타일
+      for (const id of ['print-list', 'print-one', 'print-area']) assert.match(page, new RegExp(`id="${id}"`), id);
+      const css = await (await fetch(`${h.base}/teacher.css`)).text();
+      assert.match(css, /@media print/);
+      assert.match(css, /body\.printing \.print-area/);
       assert.ok(page.indexOf('id="alerts"') < page.indexOf('id="pasted"') && page.indexOf('id="pasted"') < page.indexOf('id="students"'));
       assert.equal((await fetch(`${h.base}/teacher.js`)).status, 200);
       assert.equal((await fetch(`${h.base}/teacher.css`)).status, 200);

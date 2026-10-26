@@ -53,8 +53,13 @@
 
       <section class="t-section" aria-labelledby="students-title">
         <h2 id="students-title">학생 목록</h2>
-        <label for="filter" class="sr-only">학번 또는 이름으로 찾기</label>
-        <input id="filter" class="t-filter" type="search" autocomplete="off" placeholder="학번 또는 이름으로 찾기">
+        <div class="t-list-tools">
+          <label for="filter" class="sr-only">학번 또는 이름으로 찾기</label>
+          <input id="filter" class="t-filter" type="search" autocomplete="off" placeholder="학번 또는 이름으로 찾기">
+          <button id="print-list" class="secondary" type="button">전체 학생 PDF로 저장</button>
+        </div>
+        <p class="hint">PDF로 저장: 학생의 1~3차시 대화를 인쇄용으로 정리해 인쇄 창을 열어요. 대상(프린터)을 'PDF로 저장'으로 고르세요. 찾기 칸에 학번 앞자리(예: 201)를 넣으면 찾은 학생만 한 파일로 저장해요(학생마다 새 쪽).</p>
+        <p id="print-status" class="t-print-status" role="status"></p>
         <div id="students" class="t-students"></div>
       </section>
     </main>
@@ -63,11 +68,14 @@
       <div class="t-detail-head">
         <button id="back" class="ghost" type="button">← 목록으로</button>
         <h2 id="detail-title"></h2>
+        <button id="print-one" class="secondary" type="button" hidden>이 학생 PDF로 저장</button>
       </div>
       <p id="detail-status" class="t-status" role="status"></p>
       <div id="sessions" class="t-sessions"></div>
     </section>
   </div>
+  <!-- 'PDF로 저장'을 누르면 여기에 인쇄용 기록을 만들고 브라우저 인쇄 창을 연다(화면에는 보이지 않는다). -->
+  <div id="print-area" class="print-area"></div>
   <script type="module" src="/teacher.js"></script>
 </body>
 </html>
