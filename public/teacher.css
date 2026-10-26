@@ -94,6 +94,7 @@ body.teacher { height: auto; min-height: 100%; }
 .p-summary { width: 100%; border-collapse: collapse; margin: 4px 0 6px; font-size: 8.5pt; }
 .p-summary th, .p-summary td { border: 1px solid #bbb; padding: 3px 5px; text-align: left; vertical-align: top; }
 .p-summary th { background: #e6efee; }
+.p-summary th:first-child, .p-summary td:first-child { white-space: nowrap; } /* '2차시'가 '2차/시'로 끊기지 않게 */
 .p-lesson { margin: 14px 0 4px; padding: 3px 7px; font-size: 11.5pt; color: #0d4a52; background: #e6efee; border-left: 5px solid #17636d; break-after: avoid; } /* 배경이 인쇄되지 않아도 읽히게 글자는 진한 색 */
 .p-session { margin: 8px 0 2px; font-size: 9.5pt; color: #333; border-bottom: 1px dashed #999; break-after: avoid; }
 .p-stage { margin: 9px 0 3px; font-size: 9pt; font-weight: 700; color: #17636d; border-bottom: 1px solid #17636d; break-after: avoid; }
@@ -108,7 +109,7 @@ body.teacher { height: auto; min-height: 100%; }
 .p-text p { margin: 0; }
 .p-text p + p, .p-text p + ul, .p-text p + ol, .p-text ul + p, .p-text ol + p { margin-top: 0.4em; }
 .p-text ul, .p-text ol { margin: 0; padding-left: 1.3em; }
-.p-badge { display: inline-block; padding: 0 5px; font-size: 7.5pt; font-weight: 700; line-height: 1.5; border-radius: 8px; }
+.p-badge { display: inline-block; white-space: nowrap; padding: 0 5px; font-size: 7.5pt; font-weight: 700; line-height: 1.5; border-radius: 8px; }
 .p-badge.risk { background: #fde8e6; color: #7a1f17; }
 .p-badge.prof { background: #fff3d6; color: #5c4300; }
 .p-badge.paste { background: #ece6fb; color: #4a2a8a; }
