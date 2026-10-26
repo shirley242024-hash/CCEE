@@ -59,3 +59,57 @@ body.teacher { height: auto; min-height: 100%; }
 .msg.student .t-meta { justify-content: flex-end; }
 .bubble.t-marked { outline: 3px solid var(--err-ink); outline-offset: 1px; }
 .bubble.t-pasted { outline: 3px solid var(--paste-ink); outline-offset: 1px; }
+
+.t-list-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.t-list-tools .t-filter { flex: 1 1 14em; }
+.t-print-status { margin: 0; font-size: 0.875rem; color: var(--accent); }
+.t-print-status:empty { display: none; }
+.t-student-head .t-print { margin-left: auto; padding: 4px 10px; font-size: 0.8125rem; }
+
+/* ---------- PDF로 저장(브라우저 인쇄) ----------
+ * 화면에는 보이지 않고, 'PDF로 저장'을 눌렀을 때(body.printing)만 인쇄된다.
+ * 색은 화면 테마(어두운 화면 포함)와 관계없이 흰 종이 기준으로 고정한다. */
+.print-area { display: none; }
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 12mm 14mm;
+    @bottom-center { content: counter(page) " / " counter(pages); font-size: 8pt; color: #666; }
+  }
+  /* 어두운 화면 설정이어도 종이 여백까지 흰색으로(styles.css의 어두운 테마 선택자와 같은 세기로 덮어쓴다) */
+  :root, :root:not([data-theme="light"]) { color-scheme: light; }
+  html, body.teacher.printing { height: auto; background: #fff; }
+  body.printing .t-app { display: none !important; }
+  body.printing .print-area {
+    display: block; color: #111; font-size: 9.5pt; line-height: 1.5;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
+.p-student + .p-student { break-before: page; }
+.p-table { width: 100%; border-collapse: collapse; }
+.p-table > thead td { padding: 0 0 3px; border-bottom: 1px solid #999; font-size: 8pt; color: #555; }
+.p-table > tbody > tr > td { padding: 0; vertical-align: top; }
+.p-title { font-size: 15pt; margin: 8px 0 6px; color: #111; }
+.p-note { margin: 2px 0; font-size: 8.5pt; color: #555; }
+.p-summary { width: 100%; border-collapse: collapse; margin: 4px 0 6px; font-size: 8.5pt; }
+.p-summary th, .p-summary td { border: 1px solid #bbb; padding: 3px 5px; text-align: left; vertical-align: top; }
+.p-summary th { background: #e6efee; }
+.p-lesson { margin: 14px 0 4px; padding: 3px 7px; font-size: 11.5pt; color: #0d4a52; background: #e6efee; border-left: 5px solid #17636d; break-after: avoid; } /* 배경이 인쇄되지 않아도 읽히게 글자는 진한 색 */
+.p-session { margin: 8px 0 2px; font-size: 9.5pt; color: #333; border-bottom: 1px dashed #999; break-after: avoid; }
+.p-stage { margin: 9px 0 3px; font-size: 9pt; font-weight: 700; color: #17636d; border-bottom: 1px solid #17636d; break-after: avoid; }
+.p-msg { margin: 3px 0; padding: 4px 7px; border: 1px solid #ddd; border-radius: 4px; break-inside: avoid; }
+.p-msg.student { background: #eaf2f1; border-color: #b9d3cf; }
+.p-msg.marked { border: 2px solid #7a1f17; }
+.p-msg.pasted { border: 2px solid #4a2a8a; }
+.p-who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 8pt; color: #555; }
+.p-who strong { color: #111; }
+.p-text { overflow-wrap: anywhere; word-break: keep-all; }
+.p-text.plain { white-space: pre-wrap; }
+.p-text p { margin: 0; }
+.p-text p + p, .p-text p + ul, .p-text p + ol, .p-text ul + p, .p-text ol + p { margin-top: 0.4em; }
+.p-text ul, .p-text ol { margin: 0; padding-left: 1.3em; }
+.p-badge { display: inline-block; padding: 0 5px; font-size: 7.5pt; font-weight: 700; line-height: 1.5; border-radius: 8px; }
+.p-badge.risk { background: #fde8e6; color: #7a1f17; }
+.p-badge.prof { background: #fff3d6; color: #5c4300; }
+.p-badge.paste { background: #ece6fb; color: #4a2a8a; }
+.p-badge.note { background: #dcecec; color: #17636d; }
