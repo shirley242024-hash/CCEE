@@ -289,15 +289,24 @@ function stageLabel(info, n) {
   const name = info?.stages[n - 1];
   return `${n}단계${info?.stages.length ? `/${info.stages.length}` : ''}${name ? ` · ${name}` : ''}`;
 }
-function periodOf(messages) {
-  if (!messages.length) return '-';
-  const first = messages[0].createdAt;
-  const last = messages[messages.length - 1].createdAt;
-  const minutes = Math.round((new Date(last) - new Date(first)) / 60000);
+/**
+ * 대화한 때. 같은 날이면 '날짜 시작~끝', 여러 날이면 '첫날 ~ 끝날'.
+ * 괄호 안은 대화(세션)마다 처음부터 끝까지의 시간을 더한 값이다(여러 날에 걸쳐도 사이의 날들은 세지 않는다).
+ */
+function periodOf(sessions) {
+  const times = sessions.flatMap((x) => x.messages.map((m) => new Date(m.createdAt).getTime()));
+  if (!times.length) return '-';
+  const first = new Date(Math.min(...times)).toISOString();
+  const last = new Date(Math.max(...times)).toISOString();
+  const minutes = sessions.reduce((sum, x) => {
+    if (!x.messages.length) return sum;
+    const t = x.messages.map((m) => new Date(m.createdAt).getTime());
+    return sum + (Math.max(...t) - Math.min(...t)) / 60000;
+  }, 0);
   const range = dayOf(first) === dayOf(last)
     ? `${dayOf(first)} ${clockOf(first)}~${clockOf(last)}`
-    : `${dayOf(first)} ${clockOf(first)} ~ ${dayOf(last)} ${clockOf(last)}`;
-  return `${range} (${minutes}분)`;
+    : `${dayOf(first)} ~ ${dayOf(last)}`;
+  return `${range} (대화 ${minutes < 1 ? '1분 미만' : `${Math.round(minutes)}분`})`;
 }
 function flagBadges(messages) {
   const count = (key) => messages.filter((m) => m[key]).length;
@@ -349,7 +358,7 @@ function buildStudentPrint(student, results, lessonInfo, printedOn) {
     if (badges.length) flags.append(...badges); else flags.textContent = '없음';
     tr.append(
       el('td', '', lessonLabel(l.lesson)),
-      el('td', '', periodOf(l.messages)),
+      el('td', '', periodOf(l.data.sessions)),
       el('td', '', `${turns}번${l.data.sessions.length > 1 ? ` (대화 ${l.data.sessions.length}개)` : ''}`),
       el('td', '', stages.length ? stageLabel(l.info, Math.max(...stages)) : '-'),
       flags,
@@ -364,7 +373,7 @@ function buildStudentPrint(student, results, lessonInfo, printedOn) {
     if (l.data.truncated) row(el('p', 'p-note', '기록이 너무 많아 앞부분만 담았어요.'));
     if (!l.data.sessions.length) row(el('p', 'p-note', '저장된 대화가 없어요.'));
     l.data.sessions.forEach((session, i) => {
-      if (l.data.sessions.length > 1) row(el('h3', 'p-session', `대화 ${i + 1} · ${periodOf(session.messages)}`));
+      if (l.data.sessions.length > 1) row(el('h3', 'p-session', `대화 ${i + 1} · ${periodOf([session])}`));
       let stage = null;
       for (const m of session.messages) {
         const student = m.role === 'student';
