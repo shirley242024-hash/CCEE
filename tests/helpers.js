@@ -35,7 +35,7 @@ export function memoryCardStore() {
 }
 
 /** 모의 Anthropic 서버 + 실제 앱을 함께 띄운다. */
-export async function startHarness(envOverrides = {}, { cardStore = null, teacherStore = null } = {}) {
+export async function startHarness(envOverrides = {}, { cardStore = null, teacherStore = null, historyStore = null } = {}) {
   const mock = await startMockAnthropic();
   const config = loadConfig({ SESSION_SECRET: SECRET, ANTHROPIC_API_KEY: 'test-key', ...envOverrides });
   const logs = [];
@@ -43,7 +43,7 @@ export async function startHarness(envOverrides = {}, { cardStore = null, teache
   const client = new Anthropic({ apiKey: 'test-key', baseURL: mock.url, maxRetries: 0 });
   const lessons = loadLessons();
   const systemPrompt = lessons.get(1).prompt;
-  const app = createApp({ config, client, logger, lessons, cardStore, teacherStore });
+  const app = createApp({ config, client, logger, lessons, cardStore, teacherStore, historyStore });
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });

@@ -276,6 +276,7 @@ h1 { margin: 0; font-size: 1.15rem; line-height: 1.3; letter-spacing: -0.01em; t
 
 /* ---------- 1차시 정리 카드(2차시 시작 카드 안, 1차시 카드 저장 줄) ---------- */
 .card-in { display: flex; flex-direction: column; gap: 8px; }
+.history-box { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .card-in h3 { margin: 0; font-size: 0.9375rem; }
 .card-in .opt { color: var(--muted); font-weight: 400; }
 .card-in textarea, .sid {
