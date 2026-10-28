@@ -48,6 +48,10 @@ const MSG = {
   rateTeacherCode: '선생님 코드를 너무 많이 틀렸어요. 1분 뒤에 다시 시도해 주세요.',
   badTeacherQuery: '학번 또는 차시가 올바르지 않아요.',
   teacherFailed: '대화 기록을 불러오지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
+  historyOff: '학번·이름으로 지난 대화를 불러오는 기능이 꺼져 있어요.',
+  rateHistory: '요청이 너무 많아요. 잠시 뒤에 다시 시도해 주세요.',
+  noHistory: '이 학번·이름으로 저장된 이 차시 대화가 없어요. 학번과 이름을 처음 입력한 그대로 넣었는지 확인하거나, "인사하며 시작하기"로 새로 시작해 주세요.',
+  historyFailed: '지난 대화를 불러오지 못했어요. 잠시 뒤에 다시 시도해 주세요.',
 };
 
 /** 교사용 화면에서 틀린 선생님 코드를 받는 횟수(주소별 1분). 학생 수업 코드보다 엄격하게 둔다. */
@@ -105,8 +109,9 @@ function describeError(err) {
  * @param {ReturnType<import('./lessons.js').loadLessons>} deps.lessons
  * @param {ReturnType<import('./cards.js').createCardStore>} [deps.cardStore] 학번 카드 저장소(꺼져 있으면 null)
  * @param {ReturnType<import('./teacher.js').createTeacherStore>} [deps.teacherStore] 교사용 기록 읽기(꺼져 있으면 null)
+ * @param {ReturnType<import('./history.js').createHistoryStore>} [deps.historyStore] 학번·이름으로 지난 대화 읽기(꺼져 있으면 null)
  */
-export function createApp({ config, client, logger, lessons, cardStore = null, teacherStore = null }) {
+export function createApp({ config, client, logger, lessons, cardStore = null, teacherStore = null, historyStore = null }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', config.trustProxy);
@@ -116,6 +121,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null, t
   const startLimiter = new SlidingWindowLimiter({ max: config.newConversationsPerIpPerMinute, windowMs: 60_000 });
   const badCodeLimiter = new SlidingWindowLimiter({ max: config.badCodePerIpPerMinute, windowMs: 60_000 });
   const cardLimiter = new SlidingWindowLimiter({ max: config.cardRequestsPerIpPerMinute, windowMs: 60_000 });
+  const historyLimiter = new SlidingWindowLimiter({ max: config.cardRequestsPerIpPerMinute, windowMs: 60_000 });
   const teacherCodeLimiter = new SlidingWindowLimiter({ max: TEACHER_BAD_CODE_PER_MIN, windowMs: 60_000 });
   const daily = new DailyCap(config.dailyRequestCap);
   const inflight = new InFlight();
@@ -164,6 +170,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null, t
       requiresAccessCode: !!config.accessCode,
       logging: !!logger.enabled,
       cardStorage: !!cardStore,
+      history: !!historyStore,
       maxChars: config.maxStudentChars,
       maxCardChars: MAX_CARD_CHARS,
       // 대화 기록을 저장할 때만 학번·이름을 묻는다(저장하지 않으면 묻지도 받지도 않는다).
@@ -358,6 +365,45 @@ export function createApp({ config, client, logger, lessons, cardStore = null, t
     }
   });
 
+  /**
+   * 학번·이름으로 이 차시의 지난 대화를 불러온다(다른 탭이나 다른 날에 이어 하기).
+   * 학번과 이름이 모두 같은 기록만 돌려준다. 화면은 이것을 그리고, 다음 메시지에 지난 대화 정리를 붙여 새 대화로 이어 간다.
+   */
+  app.post('/api/history/load', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    if (!historyStore) return fail(res, 404, 'history_off', MSG.historyOff);
+    if (rejectedByCode(req, res, body)) return;
+    if (!historyLimiter.take(req.ip || 'unknown')) return fail(res, 429, 'rate_history', MSG.rateHistory);
+    const studentId = cleanText(body.studentId);
+    const studentName = cleanText(body.studentName);
+    const nameLength = [...studentName].length;
+    if (!STUDENT_ID_RE.test(studentId) || nameLength < 1 || nameLength > MAX_NAME_CHARS) {
+      return fail(res, 400, 'need_identity', MSG.needIdentity);
+    }
+    const lesson = Number(body.lesson);
+    if (!lessons.has(lesson)) return fail(res, 400, 'bad_lesson', MSG.badLesson);
+
+    let found;
+    try {
+      found = await historyStore.load(studentId, studentName, lesson);
+    } catch (err) {
+      console.error(`[history] ${err.message}`);
+      return fail(res, 502, 'history_failed', MSG.historyFailed);
+    }
+    res.set('Cache-Control', 'no-store');
+    if (!found.rows.length) return fail(res, 404, 'no_history', MSG.noHistory);
+    res.json({
+      messages: found.rows.map((r) => ({
+        role: r.role === 'student' ? 'student' : 'tutor',
+        text: r.content,
+        stage: r.stage ?? null,
+        sessionId: r.session_id,
+        createdAt: r.created_at,
+      })),
+      truncated: found.truncated,
+    });
+  });
+
   /** 카드 요청 공통 검사. 통과하면 학번을, 아니면 응답을 보내고 null을 돌려준다. */
   function checkCardRequest(req, res, body) {
     if (!cardStore) {
@@ -491,6 +537,7 @@ export function createApp({ config, client, logger, lessons, cardStore = null, t
     startLimiter.close();
     badCodeLimiter.close();
     cardLimiter.close();
+    historyLimiter.close();
     teacherCodeLimiter.close();
   };
   return app;

@@ -101,6 +101,8 @@ export function loadConfig(env = process.env) {
     logChats,
     saveCards,
     teacherCode,
+    // 학번·이름으로 지난 대화 이어 하기: 기록을 비밀 키로 읽을 수 있으면 켜고, RESUME_BY_ID=false면 끈다.
+    resumeById: env.RESUME_BY_ID !== 'false' && logChats && !!env.SUPABASE_URL && !!env.SUPABASE_SECRET_KEY,
     supabaseUrl: env.SUPABASE_URL || '',
     supabaseKey: env.SUPABASE_PUBLISHABLE_KEY || '',
     supabaseSecretKey: env.SUPABASE_SECRET_KEY || '',

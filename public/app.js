@@ -24,6 +24,7 @@ const els = {
   title: $('#title'), subtitle: $('#subtitle'), picker: $('#picker'), lessonList: $('#lesson-list'), rules: $('#rules'),
   cardIn: $('#card-in'), cardInHint: $('#card-in-hint'), cardLoad: $('#card-load'), loadSid: $('#load-sid'), loadCard: $('#load-card'),
   cardText: $('#card-text'), cardStatus: $('#card-status'),
+  historyBox: $('#history-box'), loadHistory: $('#load-history'),
 };
 const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
 
@@ -33,7 +34,7 @@ const introNode = els.intro; // 시작 카드(실패했을 때 되살린다)
  *  - 실패하면 이번에 보낸 말풍선을 지우고, 쓴 글을 입력창에 되돌려 놓는다.
  */
 const state = {
-  cfg: { requiresAccessCode: false, logging: false, cardStorage: false, maxChars: 2000, maxCardChars: 3000, lessons: [] },
+  cfg: { requiresAccessCode: false, logging: false, cardStorage: false, history: false, maxChars: 2000, maxCardChars: 3000, lessons: [] },
   cfgOk: false,
   cfgError: '',
   lesson: null, // 지금 하는 차시(차시 고르기 화면에서는 null)
@@ -446,6 +447,7 @@ function setBusy(busy, { focus = true } = {}) {
   els.input.disabled = busy;
   els.send.disabled = busy;
   els.start.disabled = busy;
+  els.loadHistory.disabled = busy;
   // 스트리밍 중에는 스크린 리더가 글자마다 읽지 않도록 하고, 끝나면 한 번에 읽게 한다.
   els.log.setAttribute('aria-busy', String(busy));
   if (!busy && focus) els.input.focus({ preventScroll: true });
@@ -680,6 +682,44 @@ els.start.addEventListener('click', () => {
   send(START_TEXT, { fromStart: true, card });
 });
 
+/* ---------- 학번·이름으로 지난 대화 이어 하기(다른 탭이나 다른 날·다른 컴퓨터) ----------
+ * 서버가 이 학번·이름의 이 차시 기록을 돌려주면 화면에 그리고, 다음 메시지에 지난 대화 정리를 붙여 새 대화로 이어 간다
+ * ('이어서 새 대화 시작'과 같은 방식). 기록은 서버에 저장된 것만 불러온다. */
+els.loadHistory.addEventListener('click', async () => {
+  if (state.busy || !state.lesson || state.transcript.length > 0) return;
+  clearNotices();
+  if (!validateFields()) return;
+  els.loadHistory.disabled = true;
+  const r = await postJson('/api/history/load', { accessCode: els.code.value.trim(), ...identity(), lesson: state.lesson.id });
+  els.loadHistory.disabled = false;
+  if (!r.ok) {
+    addNotice(r.message, { error: true });
+    return;
+  }
+  const transcript = [];
+  let session = null;
+  let stage = 0;
+  for (const m of r.data.messages || []) {
+    if (session !== null && m.sessionId !== session) transcript.push({ role: 'divider', text: RESUME_DIVIDER });
+    session = m.sessionId;
+    transcript.push({ role: m.role === 'student' ? 'student' : 'tutor', text: String(m.text ?? '') });
+    if (m.role !== 'student' && m.stage) stage = Number(m.stage);
+  }
+  if (!transcript.length) return;
+  state.transcript = transcript;
+  state.token = null; // 다음 메시지는 지난 대화 정리와 함께 새 대화로 보낸다
+  state.pending = null;
+  hideIntro();
+  renderTranscript();
+  commitStage(stage);
+  save();
+  updateDownload();
+  const last = formatTime(r.data.messages.at(-1).createdAt);
+  addNotice(`${last ? `${last}까지의 ` : ''}지난 대화를 불러왔어요${r.data.truncated ? '(너무 길어 최근 부분만)' : ''}. 챗봇의 마지막 질문에 이어서 답을 쓰거나 '이어서 시작하기'를 누르세요.`,
+    { actions: [{ label: '이어서 시작하기', onClick: startResume }] });
+  els.input.focus({ preventScroll: true });
+});
+
 /* ---------- 처음부터 다시(두 번 눌러야 지워진다)와 차시 고르기 ---------- */
 let resetTimer = null;
 els.reset.addEventListener('click', () => {
@@ -746,6 +786,7 @@ function enterLesson(lesson) {
   els.idField.hidden = !state.cfg.askIdentity;
   els.logNotice.hidden = !state.cfg.logging;
   els.cardIn.hidden = !lesson.usesCard;
+  els.historyBox.hidden = !state.cfg.history;
   els.cardLoad.hidden = !state.cfg.cardStorage;
   els.cardInHint.textContent = state.cfg.cardStorage
     ? '1차시에 학번으로 저장했다면 불러오고, 아니면 복사해 둔 카드를 붙여 넣어요. 없으면 비워 두고 시작해도 돼요.'
@@ -754,6 +795,23 @@ function enterLesson(lesson) {
   showIntro();
   restore();
   updateDownload();
+}
+
+/** state.transcript(저장된 대화)를 화면에 그린다. */
+function renderTranscript() {
+  state.transcript.forEach((m) => {
+    if (m.role === 'divider') {
+      addDivider();
+    } else if (m.role === 'student') {
+      addMessage('student').bubble.textContent = m.text;
+    } else {
+      const { stage, body } = splitHeader(m.text);
+      const t = addMessage('tutor');
+      setStageChip(t.wrap, stage);
+      renderRich(t.bubble, body);
+      if (isCard(body)) addCardTools(t.wrap, body.trim());
+    }
+  });
 }
 
 /** 이 차시에서 저장해 둔 대화를 다시 그린다. */
@@ -772,19 +830,7 @@ function restore() {
     state.token = saved.token || null;
     state.transcript = saved.transcript;
     hideIntro();
-    state.transcript.forEach((m) => {
-      if (m.role === 'divider') {
-        addDivider();
-      } else if (m.role === 'student') {
-        addMessage('student').bubble.textContent = m.text;
-      } else {
-        const { stage, body } = splitHeader(m.text);
-        const t = addMessage('tutor');
-        setStageChip(t.wrap, stage);
-        renderRich(t.bubble, body);
-        if (isCard(body)) addCardTools(t.wrap, body.trim());
-      }
-    });
+    renderTranscript();
     commitStage(Number(saved.stage) || 0);
     if (saved.pending) {
       els.input.value = saved.pending;

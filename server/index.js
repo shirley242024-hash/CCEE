@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { loadLessons } from './lessons.js';
 import { createTeacherStore } from './teacher.js';
+import { createHistoryStore } from './history.js';
 
 const config = loadConfig();
 
@@ -21,12 +22,12 @@ if (!config.anthropicApiKey) {
 const lessons = loadLessons();
 const client = new Anthropic({ apiKey: config.anthropicApiKey || undefined, maxRetries: 2 });
 const logger = createLogger(config);
-const app = createApp({ config, client, logger, lessons, cardStore: createCardStore(config), teacherStore: createTeacherStore(config) });
+const app = createApp({ config, client, logger, lessons, cardStore: createCardStore(config), teacherStore: createTeacherStore(config), historyStore: createHistoryStore(config) });
 
 const server = app.listen(config.port);
 server.once('listening', () => {
   console.log(`챗봇 서버를 시작했어요: http://localhost:${config.port}`);
-  console.log(`  모델=${config.model} effort=${config.effort} 프롬프트=${[...lessons].map(([id, l]) => `${id}차시:${l.prompt.version}`).join(',')} 수업코드=${config.accessCode ? '사용' : '없음'} 대화기록=${logger.enabled ? '저장' : '저장 안 함'} 학번카드=${config.saveCards ? '사용' : '안 씀'} 교사용화면=${config.teacherCode ? '켜짐(/teacher.html)' : '꺼짐'}`);
+  console.log(`  모델=${config.model} effort=${config.effort} 프롬프트=${[...lessons].map(([id, l]) => `${id}차시:${l.prompt.version}`).join(',')} 수업코드=${config.accessCode ? '사용' : '없음'} 대화기록=${logger.enabled ? '저장' : '저장 안 함'} 학번카드=${config.saveCards ? '사용' : '안 씀'} 교사용화면=${config.teacherCode ? '켜짐(/teacher.html)' : '꺼짐'} 학번으로이어하기=${config.resumeById ? '켜짐' : '꺼짐'}`);
 });
 server.once('error', (err) => {
   const reason = err.code === 'EADDRINUSE'
